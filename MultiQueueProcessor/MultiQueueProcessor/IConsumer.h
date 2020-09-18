@@ -8,8 +8,6 @@ namespace MQP
 /// <summary>
 /// The consumer's interace
 /// </summary>
-/// <typeparam name="Key"></typeparam>
-/// <typeparam name="Value"></typeparam>
 template<typename Key, typename Value>
 struct IConsumer
 {

@@ -1,10 +1,11 @@
-// MultiQueueProcessor.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
+// The file shows some examples of MultiQueueProcessor using
 
 #include "pch.h"
+
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <atomic>
 #include <assert.h>
 
 #include "ThreadPoolBoost.h"
