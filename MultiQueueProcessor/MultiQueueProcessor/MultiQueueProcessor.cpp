@@ -11,8 +11,6 @@
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
 
-using namespace std::chrono;
-
 /// <summary>
 /// Simple consumer
 /// </summary>
