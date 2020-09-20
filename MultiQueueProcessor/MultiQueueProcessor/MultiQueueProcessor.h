@@ -36,17 +36,13 @@ public:
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
+      // TODO: adapt for 
       std::scoped_lock lock(m_mutex);
 
-      auto it = m_consumerProcessorGroups.find(key);
-      if (it != std::end(m_consumerProcessorGroups))
-      {
-         it->second->Add(std::move(consumer));
-         return;
-      }
+      auto [it, isInserted] = m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool>>(consumer, m_threadPool));
+      auto [itDataManager, isInsertedDataManager] = m_dataManagers.emplace(key, std::make_shared<DataManager<Key, Value>>(key));
 
-      m_consumerProcessorGroups.emplace(key,
-         std::make_shared<ConsumerProcessorGroup<Key, Value, TPool>>(key, m_threadPool, std::move(consumer)));
+      it->second->AddValueSource(key, itDataManager->second->CreateValueSource());
    }
 
    /// <summary>
@@ -58,16 +54,10 @@ public:
    {
       std::scoped_lock lock(m_mutex);
 
-      auto it = m_consumerProcessorGroups.find(key);
-      if (it == std::end(m_consumerProcessorGroups))
-      {
-         return;
-      }
+      auto [it, isInserted] = m_consumerProcessors[key];
+      auto [itDataManager, isInsertedDataManager] = m_dataManagers.emplace(key, std::make_shared<DataManager<Value>>());
 
-      if (it->second->IsEmpty())
-      {
-         m_consumerProcessorGroups.erase(it);
-      }
+      it->AddValueSource(key, itDataManager->CreateValueSource());
    }
 
    /// <summary>
@@ -76,25 +66,27 @@ public:
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)
    {
-      ConsumerProcessorGroupPtr<Key, Value, TPool> processorsGroup;
+      //ConsumerProcessorGroupPtr<Key, Value, TPool> processorsGroup;
 
-      {
-         std::shared_lock sharedLock(m_mutex);
-         auto it = m_consumerProcessorGroups.find(key);
-         if (it == std::end(m_consumerProcessorGroups))
-         {
-            return;
-         }
+      //{
+      //   std::shared_lock sharedLock(m_mutex);
+      //   auto it = m_consumerProcessorGroups.find(key);
+      //   if (it == std::end(m_consumerProcessorGroups))
+      //   {
+      //      return;
+      //   }
 
-         processorsGroup = it->second;
-      }
+      //   processorsGroup = it->second;
+      //}
 
-      processorsGroup->Process(std::forward<TValue>(value));
+      //processorsGroup->Process(std::forward<TValue>(value));
    }
 
 private:
    std::shared_mutex m_mutex; // guards m_consumerProcessorGroups
-   std::unordered_map<Key, ConsumerProcessorGroupPtr<Key, Value, TPool>, Hash> m_consumerProcessorGroups;
+   //std::unordered_map<Key, ConsumerProcessorGroupPtr<Key, Value, TPool>, Hash> m_consumerProcessorGroups;
+   std::unordered_map<IConsumerPtr<Key, Value>, ConsumerProcessorPtr<Key, Value, TPool>> m_consumerProcessors;
+   std::unordered_map<Key, DataManagerPtr<Key, Value>, Hash> m_dataManagers;
    const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers calls" tasks execution
 };
 }

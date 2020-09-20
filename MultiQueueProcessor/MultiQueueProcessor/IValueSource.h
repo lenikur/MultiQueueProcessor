@@ -3,10 +3,12 @@
 #include <memory>
 #include <functional>
 
+// TODO: expand it with Key and make Group an implementor of this interface
+
 /// <summary>
 /// The interface describes a value source
 /// </summary>
-template <typename Value>
+template <typename Key, typename Value>
 class IValueSource
 {
 public:
@@ -15,7 +17,7 @@ public:
    /// <summary>
    /// Gets a current value
    /// </summary>
-   virtual const Value& GetValue() const = 0;
+   virtual std::tuple<const Key&, const Value&> GetValue() const = 0;
 
    /// <summary>
    /// Checks whether a value is available in a source
@@ -41,5 +43,5 @@ public:
 
 };
 
-template <typename Value>
-using IValueSourcePtr = std::shared_ptr<IValueSource<Value>>;
+template <typename Key, typename Value>
+using IValueSourcePtr = std::shared_ptr<IValueSource<Key, Value>>;

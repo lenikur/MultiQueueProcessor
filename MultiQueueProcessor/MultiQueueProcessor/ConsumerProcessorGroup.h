@@ -56,8 +56,8 @@ public:
          return;
       }
 
-      m_processors.emplace_back(std::make_shared<ConsumerProcessor<Key, Value, TPool>>(
-         m_key, std::move(consumer), m_dataManager->CreateValueSource(), m_threadPool))->ConnectToValueSource();
+      //m_processors.emplace_back(std::make_shared<ConsumerProcessor<Key, Value, TPool>>(
+      //   m_key, std::move(consumer), m_dataManager->CreateValueSource(), m_threadPool))->ConnectToValueSource();
    }
 
    /// <summary>
@@ -88,7 +88,7 @@ public:
    }
 
 private:
-   DataManagerPtr<Value> m_dataManager;
+   DataManagerPtr<Key, Value> m_dataManager;
    mutable std::shared_mutex m_mutex; // Guards m_processors
    std::vector<ConsumerProcessorPtr<Key, Value, TPool>> m_processors;
    const Key m_key;

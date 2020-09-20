@@ -6,6 +6,7 @@
 
 #include "IConsumer.h"
 #include "IValueSource.h"
+#include "ValueSourceGroup.h"
 
 namespace MQP
 {
@@ -18,18 +19,16 @@ class ConsumerProcessor final : public std::enable_shared_from_this<ConsumerProc
 {
    enum class EState { free, processing };
 public:
-   ConsumerProcessor(Key key, IConsumerPtr<Key, Value> consumer, IValueSourcePtr<Value> valueSource, std::shared_ptr<TPool> threadPool) 
+   ConsumerProcessor(IConsumerPtr<Key, Value> consumer, std::shared_ptr<TPool> threadPool) 
       : m_consumer(std::move(consumer))
       , m_token(reinterpret_cast<std::uintptr_t>(m_consumer.get()))
-      , m_key(std::move(key))
       , m_threadPool(std::move(threadPool))
-      , m_valueSource(std::move(valueSource))
    {
    }
 
    ~ConsumerProcessor()
    {
-      m_valueSource->Stop();
+      m_valueSourceGroup->Stop();
    }
 
    ConsumerProcessor(const ConsumerProcessor&) = delete;
@@ -37,9 +36,19 @@ public:
    ConsumerProcessor(ConsumerProcessor&&) = delete;
    ConsumerProcessor& operator=(ConsumerProcessor&&) = delete;
 
-   const Key& GetKey() const
+   void AddValueSource(const Key& key, IValueSourcePtr<Key, Value> valueSource)
    {
-      return m_key;
+      m_valueSourceGroup->AddValueSource(key, std::move(valueSource));
+   }
+
+   void RemoveSubsciption(const Key& key)
+   {
+      m_valueSourceGroup->RemoveValueSource(key);
+   }
+
+   bool IsSubscribedToAny() const
+   {
+      m_valueSourceGroup->IsEmpty();
    }
 
    const IConsumerPtr<Key, Value>& GetConsumer()
@@ -47,14 +56,14 @@ public:
       return m_consumer;
    }
 
-   const IValueSourcePtr<Value>& GetValueSource()
+   const ValueSourceGroupPtr<Key, Value>& GetValueSource()
    {
-      return m_valueSource;
+      return m_valueSourceGroup;
    }
 
    void ConnectToValueSource()
    {
-      m_valueSource->SetNewValueAvailableHandler([processor = weak_from_this()]()
+      m_valueSourceGroup->SetNewValueAvailableHandler([processor = weak_from_this()]()
       {
          if (auto spProcessor = processor.lock())
          {
@@ -78,7 +87,8 @@ private:
          {
             auto& valueSource = spProcessor->GetValueSource();
             assert(valueSource->HasValue());
-            spProcessor->GetConsumer()->Consume(spProcessor->GetKey(), valueSource->GetValue());
+            const auto& [key, value] = valueSource->GetValue();
+            spProcessor->GetConsumer()->Consume(key, value);
             valueSource->MoveNext();
             spProcessor->onValueProcessed();
          }
@@ -90,7 +100,7 @@ private:
    /// </summary>
    void onValueProcessed()
    {
-      if (!m_valueSource->HasValue())
+      if (!m_valueSourceGroup->HasValue())
       {
          std::scoped_lock lock(m_mutex);
          m_state = EState::free;
@@ -122,10 +132,9 @@ private:
    const IConsumerPtr<Key, Value> m_consumer;
    // a token is requiered in case a thread pool shall notify the consumer strictly from the same thread (STA simulation)
    const std::uintptr_t m_token; 
-   const Key m_key;
    std::mutex m_mutex; // guards m_state
    EState m_state = EState::free;
-   const IValueSourcePtr<Value> m_valueSource;
+   ValueSourceGroupPtr<Key, Value> m_valueSourceGroup;
    const std::shared_ptr<TPool> m_threadPool;
 };
 

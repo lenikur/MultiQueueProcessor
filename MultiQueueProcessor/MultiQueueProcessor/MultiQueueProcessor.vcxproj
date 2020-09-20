@@ -168,6 +168,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="ThreadPoolBoost.h" />
     <ClInclude Include="UserTypes.h" />
+    <ClInclude Include="ValueSourceGroup.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MultiQueueProcessor.cpp" />
