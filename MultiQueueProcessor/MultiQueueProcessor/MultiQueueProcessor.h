@@ -33,6 +33,13 @@ public:
 
    /// <summary>
    /// Subscribes a consumer to value notifications by the key.
+   /// 
+   /// It is guaranteed that a consumer will be notified (via IConsumer::Consume) sequentially (not simultaneously) 
+   /// about all enqueued values for a key for which the consumer is subscribed to. Whether such notifications happen 
+   /// in the same thread or the calls can occur from different threads (but anyway sequetially) is controlled by 
+   /// the thread pool implementation, passed to MultiQueueProcessor.
+   /// It is not guaranteed that the consumer which is subscribed to different keys will be notified sequentially
+   /// about all enqueued values for that keys. The current implementation provides only "intra key" sequential notifications.
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
