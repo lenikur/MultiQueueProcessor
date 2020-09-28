@@ -31,7 +31,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
    /// The class implements IValueSource interface and controls sequantial reading for one consumer regardless others.
    /// </summary>
    template <typename Key, typename Value>
-   class Locator : public IValueSource<Key, Value>, public std::enable_shared_from_this<Locator<Key, Value>>
+   class Locator : public IValueSource<Value>, public std::enable_shared_from_this<Locator<Key, Value>>
    {
       friend DataManager<Key, Value>;
    public:
@@ -51,7 +51,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       Locator(Locator&&) = delete;
       Locator& operator=(Locator&&) = delete;
 
-      std::tuple<const Key&, const Value&> GetValue() const override
+      Value& GetValue() const override
       {
          return m_dataManager->getValue(m_position);
       }
@@ -129,10 +129,10 @@ public:
             {
                position = itBack;
                ++(std::get<counter>(*position));
-
-               locatorsForUpdate.push_back(locator);
             }
          }
+
+         locatorsForUpdate = m_locators;
       }
 
       for (const auto& locator : locatorsForUpdate)
@@ -152,6 +152,13 @@ public:
       return m_locators.emplace_back(std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end()));
    }
 
+   bool HasActiveValueSources() const
+   {
+      std::scoped_lock lock(m_mutex);
+
+      return !m_locators.empty();
+   }
+
    using std::enable_shared_from_this<DataManager<Key, Value>>::shared_from_this;
 
 private:
@@ -164,7 +171,7 @@ private:
       return position != std::end(m_values);
    }
 
-   std::tuple<const Key&, const Value&> getValue(typename const ValuesStorage<Value>::iterator& position) const
+   ValueHolder<Key, Value> getValue(typename const ValuesStorage<Value>::iterator& position) const
    {
       std::shared_lock lock(m_mutex);
       assert(position != std::end(m_values));

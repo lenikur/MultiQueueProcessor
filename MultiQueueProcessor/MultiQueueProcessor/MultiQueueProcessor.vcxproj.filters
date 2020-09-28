@@ -24,9 +24,6 @@
     <ClInclude Include="ConsumerProcessor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ConsumerProcessorGroup.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="IConsumer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -40,9 +37,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="IValueSource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ValueSourceGroup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

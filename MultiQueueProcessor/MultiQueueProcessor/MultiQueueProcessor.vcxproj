@@ -160,7 +160,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ConsumerProcessor.h" />
-    <ClInclude Include="ConsumerProcessorGroup.h" />
     <ClInclude Include="DataManager.h" />
     <ClInclude Include="IConsumer.h" />
     <ClInclude Include="IValueSource.h" />
@@ -168,7 +167,6 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="ThreadPoolBoost.h" />
     <ClInclude Include="UserTypes.h" />
-    <ClInclude Include="ValueSourceGroup.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MultiQueueProcessor.cpp" />

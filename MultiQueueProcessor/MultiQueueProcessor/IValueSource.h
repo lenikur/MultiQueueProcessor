@@ -3,12 +3,13 @@
 #include <memory>
 #include <functional>
 
-// TODO: expand it with Key and make Group an implementor of this interface
+namespace MQP
+{
 
 /// <summary>
 /// The interface describes a value source
 /// </summary>
-template <typename Key, typename Value>
+template <typename Value>
 class IValueSource
 {
 public:
@@ -17,7 +18,7 @@ public:
    /// <summary>
    /// Gets a current value
    /// </summary>
-   virtual std::tuple<const Key&, const Value&> GetValue() const = 0;
+   virtual Value& GetValue() const = 0;
 
    /// <summary>
    /// Checks whether a value is available in a source
@@ -40,8 +41,11 @@ public:
    /// The event is raisen as indication of switching between "no available value" state to "value is available".
    /// </summary>
    virtual void SetNewValueAvailableHandler(std::function<void()> handler) = 0;
-
 };
 
-template <typename Key, typename Value>
-using IValueSourcePtr = std::shared_ptr<IValueSource<Key, Value>>;
+template <typename Value>
+using IValueSourcePtr = std::shared_ptr<IValueSource<Value>>;
+template <typename Value>
+using IValueSourceWeakPtr = std::weak_ptr<IValueSource<Value>>;
+
+}

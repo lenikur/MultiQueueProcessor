@@ -4,8 +4,10 @@
 #include <unordered_map>
 #include <shared_mutex>
 #include <memory>
+#include <deque>
 
-#include "ConsumerProcessorGroup.h"
+#include "ConsumerProcessor.h"
+#include "DataManager.h"
 
 namespace MQP
 {
@@ -17,6 +19,7 @@ namespace MQP
 template<typename Key, typename Value, typename TPool, typename Hash = std::hash<typename Key>>
 class MultiQueueProcessor
 {
+   enum {dataManager, subscribersToKey};
 public:
    /// <summary>
    /// Ctor
@@ -36,13 +39,26 @@ public:
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
-      // TODO: adapt for 
       std::scoped_lock lock(m_mutex);
 
-      auto [it, isInserted] = m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool>>(consumer, m_threadPool));
-      auto [itDataManager, isInsertedDataManager] = m_dataManagers.emplace(key, std::make_shared<DataManager<Key, Value>>(key));
+      auto itDataManager = m_dataManagers.find(key);
+      if (itDataManager == std::end(m_dataManagers))
+      {
+         itDataManager = m_dataManagers.try_emplace(key, std::make_shared<DataManager<Key, Value>>(key), consumer)->second;
+      }
+      else
+      {
+         auto& subscribers = std::get<subscribersToKey>(itDataManager->second);
+         if (std::find(std::begin(subscribers), std::end(subscribers), consumer) != std::end(subscribers))
+         {
+            // this subscriber has already been subscribed to the passed key, prevent a double subscribing
+            assert(false);
+            return;
+         }
+      }
 
-      it->second->AddValueSource(key, itDataManager->second->CreateValueSource());
+      auto [itConsumerProcessor, isInserted] = m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(consumer, m_threadPool));
+      itConsumerProcessor->second->AddValueSource(key, itDataManager->second->CreateValueSource()); // TODO: out of lock
    }
 
    /// <summary>
@@ -54,10 +70,48 @@ public:
    {
       std::scoped_lock lock(m_mutex);
 
-      auto [it, isInserted] = m_consumerProcessors[key];
-      auto [itDataManager, isInsertedDataManager] = m_dataManagers.emplace(key, std::make_shared<DataManager<Value>>());
+      const auto itConsumerProcessor = m_consumerProcessors.find(consumer);
+      if (itConsumerProcessor == std::end(m_consumerProcessors))
+      {
+         // there is no such consumer
+         return;
+      }
 
-      it->AddValueSource(key, itDataManager->CreateValueSource());
+      auto& itDataManager = m_dataManagers.find(key);
+      if (itDataManager == std::end(m_dataManagers))
+      {
+         // there is no such key
+         return;
+      }
+
+      auto& subscribers = std::get<subscribersToKey>(itDataManager->second);
+
+      auto itSubscriberToKey = std::find(std::begin(subscribers), std::end(subscribers), consumer);
+      if (itSubscriberToKey == std::end(subscribers))
+      {
+         // this subscriber is not subscribed to the passed key
+         assert(false);
+         return;
+      }
+
+      subscribers.erase(itSubscriberToKey);
+
+      // TODO think about it as an alternative to deque<Subscribers>
+      //if (!itDataManager->second->HasActiveValueSource())
+      if (subscribers.empty())
+      {
+         // there are no subscribers to the key, it's time to remove it
+         m_dataManagers.erase(itDataManager);
+      }
+
+      auto consumerProcessor = itConsumerProcessor->second;
+      consumerProcessor->RemoveSubscription(key);
+
+      if (!consumerProcessor->IsSubscribedToAny())
+      {
+         m_consumerProcessors.erase(itConsumerProcessor);
+      }
+
    }
 
    /// <summary>
@@ -66,27 +120,27 @@ public:
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)
    {
-      //ConsumerProcessorGroupPtr<Key, Value, TPool> processorsGroup;
+      DataManagerPtr<Key, Value> dataManager;
 
-      //{
-      //   std::shared_lock sharedLock(m_mutex);
-      //   auto it = m_consumerProcessorGroups.find(key);
-      //   if (it == std::end(m_consumerProcessorGroups))
-      //   {
-      //      return;
-      //   }
+      {
+         std::shared_lock sharedLock(m_mutex);
 
-      //   processorsGroup = it->second;
-      //}
+         auto itDataManager = m_dataManagers.find(key);
+         if (itDataManager == std::end(m_dataManagers))
+         {
+            return;
+         }
 
-      //processorsGroup->Process(std::forward<TValue>(value));
+         dataManager = itDataManager->second;
+      }
+
+      dataManager->AddValue(std::forward<TValue>(value));
    }
 
 private:
-   std::shared_mutex m_mutex; // guards m_consumerProcessorGroups
-   //std::unordered_map<Key, ConsumerProcessorGroupPtr<Key, Value, TPool>, Hash> m_consumerProcessorGroups;
-   std::unordered_map<IConsumerPtr<Key, Value>, ConsumerProcessorPtr<Key, Value, TPool>> m_consumerProcessors;
-   std::unordered_map<Key, DataManagerPtr<Key, Value>, Hash> m_dataManagers;
+   std::shared_mutex m_mutex; // guards m_consumerProcessors and m_dataManagers
+   std::unordered_map<IConsumerPtr<Key, Value>, ConsumerProcessorPtr<Key, Value, TPool, Hash>> m_consumerProcessors;
+   std::unordered_map<Key, std::tuple<DataManagerPtr<Key, Value>, std::deque<IConsumerPtr<Key, Value>>>, Hash> m_dataManagers;
    const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers calls" tasks execution
 };
 }
