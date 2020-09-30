@@ -7,11 +7,13 @@
 #include <string>
 #include <atomic>
 #include <assert.h>
+#include <chrono>
 
 #include "ThreadPoolBoost.h"
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
 
+using namespace std::chrono;
 /// <summary>
 /// Simple consumer
 /// </summary>
@@ -68,6 +70,50 @@ void sample()
       std::this_thread::yield();
    }
 }
+
+/// <summary>
+/// The function shows how to use MQProcessor. One consumer subscribed to 2 keys.
+/// </summary>
+void sampleOneSubscriberManyKeys()
+{
+   MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
+
+   const MyKey key1{ 1 };
+   const MyKey key2{ 2 };
+
+   constexpr std::uint32_t valuesCount = 10;
+   auto consumer = std::make_shared<Consumer>(valuesCount * 2);
+   processor.Subscribe(key1, consumer);
+   processor.Subscribe(key2, consumer);
+
+   boost::asio::thread_pool pool;
+
+   for (int i = 0; i < valuesCount; ++i)
+   {
+      MyVal value{ std::to_string(i) };
+      boost::asio::post(pool, [&processor, key = key1, value = value]()
+         {
+            processor.Enqueue(key, value);
+         });
+
+      boost::asio::post(pool, [&processor, key = key2, value = value]()
+         {
+            std::this_thread::sleep_for(50ms);
+            processor.Enqueue(key, value);
+         });
+   }
+
+   while (true)
+   {
+      if (consumer->ExpectedCallsCount == 0)
+      {
+         return;
+      }
+
+      std::this_thread::yield();
+   }
+}
+
 
 /// <summary>
 /// The function shows that a count of copy-related actions in MQProcessor doesn't depend on consumers count
@@ -144,6 +190,9 @@ int main()
 {
    std::cout << "******************* Sample *******************" << std::endl;
    sample();
+
+   std::cout << "********** Sample one consumer many keys **********" << std::endl;
+   sampleOneSubscriberManyKeys();
 
    MyVal::_copyAndCreateCallsCount = 0; // reset
    std::cout << "******************* Lvalue demo *******************" << std::endl;
