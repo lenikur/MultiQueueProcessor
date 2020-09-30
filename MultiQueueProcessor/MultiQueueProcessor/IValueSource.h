@@ -6,10 +6,18 @@
 namespace MQP
 {
 
+template <typename Key, typename Value>
+class IValueSource;
+
+template <typename Key, typename Value>
+using IValueSourcePtr = std::shared_ptr<IValueSource<Key, Value>>;
+template <typename Key, typename Value>
+using IValueSourceWeakPtr = std::weak_ptr<IValueSource<Key, Value>>;
+
 /// <summary>
 /// The interface describes a value source
 /// </summary>
-template <typename Value>
+template <typename Key, typename Value>
 class IValueSource
 {
 public:
@@ -18,7 +26,7 @@ public:
    /// <summary>
    /// Gets a current value
    /// </summary>
-   virtual Value& GetValue() const = 0;
+   virtual std::tuple<const Key&, const Value&> GetValue() const = 0; // TODO: unite GetValue and HasValue
 
    /// <summary>
    /// Checks whether a value is available in a source
@@ -40,12 +48,7 @@ public:
    /// Sets a new available value event handler.
    /// The event is raisen as indication of switching between "no available value" state to "value is available".
    /// </summary>
-   virtual void SetNewValueAvailableHandler(std::function<void()> handler) = 0;
+   virtual void SetNewValueAvailableHandler(std::function<void(IValueSourcePtr<Key, Value> valueSource)> handler) = 0;
 };
-
-template <typename Value>
-using IValueSourcePtr = std::shared_ptr<IValueSource<Value>>;
-template <typename Value>
-using IValueSourceWeakPtr = std::weak_ptr<IValueSource<Value>>;
 
 }

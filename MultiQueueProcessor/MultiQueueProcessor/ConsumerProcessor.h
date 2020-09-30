@@ -27,7 +27,12 @@ public:
 
    ~ConsumerProcessor()
    {
-      m_valueSourceGroup->Stop();
+      std::scoped_lock lock(m_valueSourceMutex);
+      // TODO: Do we really need it?
+      for (auto& [key, valueSource] : m_valueSources)
+      {
+         valueSource->Stop();
+      }
    }
 
    ConsumerProcessor(const ConsumerProcessor&) = delete;
@@ -35,16 +40,19 @@ public:
    ConsumerProcessor(ConsumerProcessor&&) = delete;
    ConsumerProcessor& operator=(ConsumerProcessor&&) = delete;
 
-   void AddValueSource(const Key& key, IValueSourcePtr<Value> valueSource)
+   void AddValueSource(const Key& key, IValueSourcePtr<Key, Value> valueSource) // TODO: remove key argument as valueSource does have it
    {
-      auto& [itValueSource, isAdded] = m_valueSources.emplace(key, std::move(valueSource));
-      if (isAdded)
+      std::scoped_lock lock(m_valueSourceMutex);
+
+      const auto& [itValueSource, isAdded] = m_valueSources.emplace(key, std::move(valueSource));
+
+      if (isAdded) // TODO: out of lock?
       {
-         itValueSource->second->SetNewValueAvailableHandler([processor = weak_from_this(), valueSource = std::weak_ptr<>(valueSource)]()
+         itValueSource->second->SetNewValueAvailableHandler([processor = weak_from_this()](IValueSourcePtr<Key, Value> valueSource)
          {
-            if (auto spProcessor = processor.lock() && auto spValueSource = valueSource.lock())
+            if (auto spProcessor = processor.lock()) // TODO: think about processor as shared_ptr (performance reason)
             {
-               spProcessor->onNewValueAvailable();
+               spProcessor->onNewValueAvailable(valueSource);
             }
          });
       }
@@ -52,59 +60,61 @@ public:
 
    void RemoveSubscription(const Key& key)
    {
-      m_valueSources.erase(key);
+      IValueSourcePtr<Key, Value> valueSource;
+
+      {
+         std::scoped_lock lock(m_valueSourceMutex);
+
+         auto it = m_valueSources.find(key);
+         if (it == std::end(m_valueSources))
+         {
+            return;
+         }
+
+         valueSource = it->second; // TODO: std::move???
+
+         m_valueSources.erase(it);
+      }
+
+      valueSource->Stop();
    }
 
    bool IsSubscribedToAny() const
    {
+      std::scoped_lock lock(m_valueSourceMutex);
+
       return !m_valueSources.empty();
    }
 
-   const IConsumerPtr<Key, Value>& GetConsumer()
+   const IConsumerPtr<Key, Value>& GetConsumer() const
    {
       return m_consumer;
    }
 
-   const ValueSourceGroupPtr<Key, Value>& GetValueSource()
-   {
-      return m_valueSourceGroup;
-   }
-
-   void ConnectToValueSource()
-   {
-      m_valueSourceGroup->SetNewValueAvailableHandler([processor = weak_from_this()]()
-      {
-         if (auto spProcessor = processor.lock())
-         {
-            spProcessor->onNewValueAvailable();
-         }
-      });
-   }
-
-   using std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool>>::weak_from_this;
-
 private:
+
+   using std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>::weak_from_this;
 
    /// <summary>
    /// Creates a task for passing it to the thread pool.
    /// </summary>
-   std::packaged_task<void()> createTask(Key key, IValueSourceWeakPtr<Value> valueSource)
+   std::packaged_task<void()> createTask(IValueSourcePtr<Key, Value> valueSource)
    {
-      return std::packaged_task<void()>([processor = weak_from_this(), key = std::move(key), valueSource = IValueSourceWeakPtr<Value>(valueSource)]()
+      return std::packaged_task<void()>([processor = weak_from_this(), valueSource = IValueSourceWeakPtr<Key, Value>(valueSource)]()
       {
-         auto spProcessor = = processor.lock(); // TODO: do we really need it?? check task and ConsumerProcessor life time
-
+         auto spProcessor = processor.lock(); // TODO: think about lock.. shared_ptr (better performance)?
          if (!spProcessor)
          {
             return;
          }
 
-         if (auto spValueSource = valueSource.lock())
+         if (auto spValueSource = valueSource.lock()) // TODO: think about CancelationToken and shared_ptr. it allows avoiding .lock() (better performance)
          {
-            if (valueSource->HasValue()) // TODO: really need this check?
+            if (spValueSource->HasValue()) // TODO: really need this check?
             {
-               spProcessor->GetConsumer()->Consume(key, spValueSource->GetValue());
-               valueSource->MoveNext();
+               const auto& [key, value] = spValueSource->GetValue();
+               spProcessor->GetConsumer()->Consume(key, value);
+               spValueSource->MoveNext();
             }
          }
 
@@ -117,42 +127,55 @@ private:
    /// </summary>
    void onValueProcessed()
    {
-      std::scoped_lock lock(m_mutex);
+      std::packaged_task<void()> task;
 
-      if (m_tasks.empty())
       {
-         return;
+         std::scoped_lock lock(m_mutex);
+         assert(m_state == EState::processing);
+
+         if (m_tasks.empty())
+         {
+            m_state = EState::free;
+            return;
+         }
+         task = std::move(m_tasks.front());
+         m_tasks.pop_front();
       }
 
-      m_threadPool->Post(std::move(m_tasks.front()), m_token);
-      m_tasks.pop_front();
+
+      m_threadPool->Post(std::move(task), m_token);
    }
 
    /// <summary>
    /// A new value available in the value source event handler
    /// </summary>
-   void onNewValueAvailable(const Key& key, IValueSourcePtr<Value> valueSource)
+   void onNewValueAvailable(IValueSourcePtr<Key, Value> valueSource)
    {
+      auto task = createTask(std::move(valueSource));
+
       {
          std::scoped_lock lock(m_mutex);
          if (m_state == EState::processing)
          {
+            m_tasks.emplace_back(std::move(task));
             return;
          }
 
+         assert(m_state == EState::free);
          m_state = EState::processing;
       }
 
-      m_threadPool->Post(createTask(), m_token);
+      m_threadPool->Post(std::move(task), m_token);
    }
 
 private:
    const IConsumerPtr<Key, Value> m_consumer;
    // a token is requiered in case a thread pool shall notify the consumer strictly from the same thread (STA simulation)
    const std::uintptr_t m_token; 
-   std::mutex m_mutex; // guards m_state
+   std::mutex m_mutex; // guards m_state and m_tasks
    EState m_state = EState::free;
-   using ValueSources = std::unordered_map<Key, IValueSourcePtr<Value>, Hash>;
+   std::mutex m_valueSourceMutex; // guards m_valueSources
+   using ValueSources = std::unordered_map<Key, IValueSourcePtr<Key, Value>, Hash>;
    ValueSources m_valueSources;
    std::deque<std::packaged_task<void()>> m_tasks;
    const std::shared_ptr<TPool> m_threadPool;

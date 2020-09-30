@@ -44,7 +44,9 @@ public:
       auto itDataManager = m_dataManagers.find(key);
       if (itDataManager == std::end(m_dataManagers))
       {
-         itDataManager = m_dataManagers.try_emplace(key, std::make_shared<DataManager<Key, Value>>(key), consumer)->second;
+         auto it = m_dataManagers.try_emplace(key, std::make_shared<DataManager<Key, Value>>(key), std::deque<IConsumerPtr<Key, Value>>{consumer});
+         assert(it.second);
+         itDataManager = it.first;
       }
       else
       {
@@ -58,7 +60,7 @@ public:
       }
 
       auto [itConsumerProcessor, isInserted] = m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(consumer, m_threadPool));
-      itConsumerProcessor->second->AddValueSource(key, itDataManager->second->CreateValueSource()); // TODO: out of lock
+      itConsumerProcessor->second->AddValueSource(key, std::get<dataManager>(itDataManager->second)->CreateValueSource()); // TODO: out of lock
    }
 
    /// <summary>
@@ -120,7 +122,7 @@ public:
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)
    {
-      DataManagerPtr<Key, Value> dataManager;
+      DataManagerPtr<Key, Value> keyDataManager;
 
       {
          std::shared_lock sharedLock(m_mutex);
@@ -131,10 +133,10 @@ public:
             return;
          }
 
-         dataManager = itDataManager->second;
+         keyDataManager = std::get<dataManager>(itDataManager->second);
       }
 
-      dataManager->AddValue(std::forward<TValue>(value));
+      keyDataManager->AddValue(std::forward<TValue>(value));
    }
 
 private:

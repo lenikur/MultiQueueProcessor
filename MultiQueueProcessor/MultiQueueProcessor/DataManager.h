@@ -31,7 +31,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
    /// The class implements IValueSource interface and controls sequantial reading for one consumer regardless others.
    /// </summary>
    template <typename Key, typename Value>
-   class Locator : public IValueSource<Value>, public std::enable_shared_from_this<Locator<Key, Value>>
+   class Locator : public IValueSource<Key, Value>, public std::enable_shared_from_this<Locator<Key, Value>>
    {
       friend DataManager<Key, Value>;
    public:
@@ -43,7 +43,9 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       ~Locator()
       {
-         Stop();
+         // TODO: think one more time about DataManager, Locators, Tasks, ConsumerProcessor destruction
+         //m_dataManager->unregisterLocator(getPosition());
+         m_dataManager->unregisterLocator(this);
       }
 
       Locator(const Locator&) = delete;
@@ -51,7 +53,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       Locator(Locator&&) = delete;
       Locator& operator=(Locator&&) = delete;
 
-      Value& GetValue() const override
+      std::tuple<const Key&, const Value&> GetValue() const override
       {
          return m_dataManager->getValue(m_position);
       }
@@ -68,17 +70,18 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       void Stop() override
       {
-         m_dataManager->unregisterLocator(shared_from_this());
+         m_dataManager->unsubscribeLocator(shared_from_this());
       }
 
-      void SetNewValueAvailableHandler(std::function<void()> handler) override
+      void SetNewValueAvailableHandler(std::function<void(IValueSourcePtr<Key, Value> valueSource)> handler) override
       {
          m_newValueAvailableHandler = std::move(handler);
       }
 
-      using std::enable_shared_from_this<Locator<Key, Value>>::shared_from_this;
-
    private:
+
+      using std::enable_shared_from_this<Locator<Key, Value>>::shared_from_this;
+      using std::enable_shared_from_this<Locator<Key, Value>>::weak_from_this;
 
       typename ValuesStorage<Value>::iterator& getPosition()
       {
@@ -89,18 +92,21 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       {
          if (m_newValueAvailableHandler)
          {
-            m_newValueAvailableHandler();
+            m_newValueAvailableHandler(shared_from_this());
          }
       }
 
    private:
       DataManagerPtr<Key, Value> m_dataManager;
       typename ValuesStorage<Value>::iterator m_position;
-      std::function<void()> m_newValueAvailableHandler;
+      std::function<void(IValueSourcePtr<Key, Value> valueSource)> m_newValueAvailableHandler;
    };
 
    template <typename Key, typename Value>
    using LocatorPtr = std::shared_ptr<Locator<Key, Value>>;
+
+   template <typename Key, typename Value>
+   using LocatorWeakPtr = std::weak_ptr<Locator<Key, Value>>;
 
 public:
 
@@ -171,7 +177,7 @@ private:
       return position != std::end(m_values);
    }
 
-   ValueHolder<Key, Value> getValue(typename const ValuesStorage<Value>::iterator& position) const
+   std::tuple<const Key&, const Value&> getValue(typename const ValuesStorage<Value>::iterator& position) const
    {
       std::shared_lock lock(m_mutex);
       assert(position != std::end(m_values));
@@ -196,23 +202,44 @@ private:
       return !reachTheEnd;
    }
 
-   void unregisterLocator(const LocatorPtr<Key, Value>& locator)
+   /// <summary>
+   /// Unsubscribe the passed locator from updates
+   /// The method still keeps available Locator::GetValue method correct work
+   /// </summary>
+   void unsubscribeLocator(LocatorPtr<Key, Value> locator)
+   {
+      LocatorPtr<Key, Value> unsubscribedLocator;
+
+      {
+         std::scoped_lock lock(m_mutex);
+
+         auto itUnsubscribedLocator = std::find_if(std::begin(m_locators), std::end(m_locators), [&locator](const auto& loc)
+            {
+               return loc == locator;
+            });
+
+         if (itUnsubscribedLocator == std::end(m_locators))
+         {
+            assert(false); // TODO: check a correctess
+            return;
+         }
+
+         unsubscribedLocator = std::move(*itUnsubscribedLocator); // TODO: ensure a correctness
+         m_locators.erase(itUnsubscribedLocator);
+      }
+   }
+
+   /// <summary>
+   /// The method must be called in Locator dtor ONLY, as Locator::GetValue method cannot be used after this call
+   /// </summary>
+   void unregisterLocator(Locator<Key, Value>* locator)
    {
       std::scoped_lock lock(m_mutex);
 
-      auto it = std::find_if(std::begin(m_locators), std::end(m_locators), [&locator](const auto& loc)
-         {
-            return loc == locator;
-         });
+      assert(locator != nullptr);
+      assert(locator->weak_from_this().expired()); // unsubscribeLocator must be called in dtor ONLY
 
-      if (it == std::end(m_locators))
-      {
-         return;
-      }
-
-      auto locatorPosition = (*it)->getPosition();
-      m_locators.erase(it);
-
+      auto locatorPosition = locator->getPosition();
       if (locatorPosition == std::end(m_values))
       {
          return;
@@ -241,7 +268,7 @@ private:
    mutable std::shared_mutex m_mutex; // guards m_values and m_locators
    const Key m_key;
    ValuesStorage<Value> m_values;
-   std::vector<LocatorPtr<Key, Value>> m_locators;
+   std::vector<LocatorPtr<Key, Value>> m_locators; // TODO: think about unordered_set
 };
 
 }
