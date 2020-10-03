@@ -45,6 +45,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       {
          // TODO: think one more time about DataManager, Locators, Tasks, ConsumerProcessor destruction
          //m_dataManager->unregisterLocator(getPosition());
+         // There is no need to call Stop() here, cause DataManager hasn't already had the reference to this locator, as it is destructor
          m_dataManager->unregisterLocator(this);
       }
 
@@ -252,16 +253,12 @@ private:
 
    void collectUnusedValues()
    {
-      for (auto it = std::begin(m_values); it != std::end(m_values);)
-      {
-         if (std::get<counter>(*it) != 0)
+      auto itFirstUsed = std::find_if(std::begin(m_values), std::end(m_values), [](const auto& value) 
          {
-            break;
-         }
+            return std::get<counter>(value) != 0; 
+         });
 
-         auto removeIt = it++;
-         m_values.erase(removeIt);
-      }
+      m_values.erase(std::begin(m_values), itFirstUsed);
    }
 
 private:

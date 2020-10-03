@@ -13,6 +13,8 @@
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
 
+extern std::atomic_int32_t s_taskQueueSize;
+
 using namespace std::chrono;
 /// <summary>
 /// Simple consumer
@@ -29,6 +31,13 @@ public:
    void Consume(const TKey& key, const Value& value) noexcept override
    {
       std::stringstream ss;
+
+      if (key == 1)
+      {
+         return;
+         ss << "************************************************************************************************";
+      }
+
       ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << std::endl;
       std::cout << ss.str();
 
@@ -114,6 +123,70 @@ void sampleOneSubscriberManyKeys()
    }
 }
 
+void exitTest()
+{
+}
+
+void subscriptionTest()
+{
+   MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
+
+   const MyKey key1{ 1 };
+   const MyKey key2{ 2 };
+   const MyKey key3{ 3 };
+
+   constexpr std::uint32_t valuesCount = 1000000;
+   auto consumer = std::make_shared<Consumer>(valuesCount * 2);
+   
+   auto consumer2 = std::make_shared<Consumer>(valuesCount);
+
+   processor.Subscribe(key1, consumer);
+   processor.Subscribe(key2, consumer);
+
+   //processor.Subscribe(key1, consumer2);
+
+   boost::asio::thread_pool pool;
+
+   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount]()
+      {
+         for (std::uint32_t i = 0; i < valuesCount; ++i)
+         {
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
+      {
+         for (std::uint32_t i = 0; i < valuesCount; ++i)
+         {
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor = processor, key1 = key1, key2 = key2, consumer = consumer]()
+      {
+         for (int i = 0; i < 10000; ++i)
+         {
+            processor.Unsubscribe(key2, consumer);
+            //std::this_thread::sleep_for(100ms);
+
+            processor.Subscribe(key2, consumer);
+            std::this_thread::sleep_for(5s);
+         }
+      });
+
+   while (true)
+   {
+      if (consumer2->ExpectedCallsCount == 0)
+      {
+         return;
+      }
+
+      std::this_thread::yield();
+   }
+}
 
 /// <summary>
 /// The function shows that a count of copy-related actions in MQProcessor doesn't depend on consumers count
@@ -188,19 +261,21 @@ void demoValueCopiesCount(EDemo mode)
 
 int main()
 {
-   std::cout << "******************* Sample *******************" << std::endl;
-   sample();
+   subscriptionTest();
 
-   std::cout << "********** Sample one consumer many keys **********" << std::endl;
-   sampleOneSubscriberManyKeys();
+   //std::cout << "******************* Sample *******************" << std::endl;
+   //sample();
 
-   MyVal::_copyAndCreateCallsCount = 0; // reset
-   std::cout << "******************* Lvalue demo *******************" << std::endl;
-   demoValueCopiesCount(EDemo::lvalue);
+   //std::cout << "********** Sample one consumer many keys **********" << std::endl;
+   //sampleOneSubscriberManyKeys();
 
-   MyVal::_copyAndCreateCallsCount = 0; // reset
-   std::cout << "******************* Rvalue demo *******************" << std::endl;
-   demoValueCopiesCount(EDemo::rvalue);
+   //MyVal::_copyAndCreateCallsCount = 0; // reset
+   //std::cout << "******************* Lvalue demo *******************" << std::endl;
+   //demoValueCopiesCount(EDemo::lvalue);
+
+   //MyVal::_copyAndCreateCallsCount = 0; // reset
+   //std::cout << "******************* Rvalue demo *******************" << std::endl;
+   //demoValueCopiesCount(EDemo::rvalue);
 
    return 0;
 }

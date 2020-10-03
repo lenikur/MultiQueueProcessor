@@ -39,6 +39,13 @@ public:
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
+      std::cout << "*********************************** Subscribe" << std::endl;
+
+      if (!consumer)
+      {
+         return;
+      }
+
       std::scoped_lock lock(m_mutex);
 
       auto itDataManager = m_dataManagers.find(key);
@@ -54,7 +61,6 @@ public:
          if (std::find(std::begin(subscribers), std::end(subscribers), consumer) != std::end(subscribers))
          {
             // this subscriber has already been subscribed to the passed key, prevent a double subscribing
-            assert(false);
             return;
          }
       }
@@ -70,6 +76,8 @@ public:
    /// </summary>
    void Unsubscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
+      std::cout << "------------------------------------------------------Unsubscribe" << std::endl;
+
       std::scoped_lock lock(m_mutex);
 
       const auto itConsumerProcessor = m_consumerProcessors.find(consumer);
@@ -79,7 +87,7 @@ public:
          return;
       }
 
-      auto& itDataManager = m_dataManagers.find(key);
+      auto itDataManager = m_dataManagers.find(key);
       if (itDataManager == std::end(m_dataManagers))
       {
          // there is no such key
