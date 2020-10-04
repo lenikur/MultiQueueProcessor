@@ -8,6 +8,7 @@
 
 #include "ConsumerProcessor.h"
 #include "DataManager.h"
+#include "DataManagerFavorSpeed.h"
 
 namespace MQP
 {

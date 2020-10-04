@@ -3,7 +3,7 @@
 #include <list>
 #include <tuple>
 #include <shared_mutex>
-#include <functional>
+//#include <functional>
 
 #include <assert.h>
 
@@ -19,7 +19,9 @@ template <typename Key, typename Value>
 using DataManagerPtr = std::shared_ptr<DataManager<Key, Value>>;
 
 /// <summary>
-/// The class manages all comming values and provides an ability to pull values individualy for each consumer
+/// The class manages all incoming values and provides an ability to pull values individualy for each consumer (see DataManager::Locator).
+/// Makes a single copy of enqueued value in case it is an lvalue regardless of number of Locators for movable Value.
+/// Makes no copy of enqueued value in case it is a rvalue regardless of number of Locators for movable Value.
 /// </summary>
 template <typename Key, typename Value>
 class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
@@ -36,7 +38,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       friend DataManager<Key, Value>;
    public:
       Locator(DataManagerPtr<Key, Value> dataManager, typename ValuesStorage<Value>::iterator position, IValueSourceConsumerPtr<Key, Value> consumer)
-         : m_dataManager(dataManager)
+         : m_dataManager(std::move(dataManager))
          , m_position(position)
          , m_consumer(std::move(consumer))
       {
