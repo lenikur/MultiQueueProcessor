@@ -51,10 +51,9 @@ public:
    virtual bool IsStopped() const = 0;
 
    /// <summary>
-   /// Sets a new available value event handler.
-   /// The event is raisen as indication of switching between "no available value" state to "value is available".
+   /// A new available value handler type.
    /// </summary>
-   virtual void SetNewValueAvailableHandler(std::function<void(IValueSourcePtr<Key, Value> valueSource)> handler) = 0;
+   using FnNewAvailableValueHandler = std::function<void(IValueSourcePtr<Key, Value> valueSource)>;
 };
 
 }

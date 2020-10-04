@@ -65,8 +65,14 @@ public:
          }
       }
 
-      auto [itConsumerProcessor, isInserted] = m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(consumer, m_threadPool));
-      itConsumerProcessor->second->AddValueSource(key, std::get<dataManager>(itDataManager->second)->CreateValueSource()); // TODO: out of lock
+      auto [itConsumerProcessor, isInserted] = 
+         m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(consumer, m_threadPool));
+
+      itConsumerProcessor->second->AddValueSource(key, 
+         [&itDataManager](auto newValueAvailableHandler)
+         {
+            return std::get<dataManager>(itDataManager->second)->CreateValueSource(std::move(newValueAvailableHandler));
+         }); // TODO: out of lock
    }
 
    /// <summary>

@@ -35,16 +35,17 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
    {
       friend DataManager<Key, Value>;
    public:
-      Locator(DataManagerPtr<Key, Value> dataManager, typename ValuesStorage<Value>::iterator position)
+      Locator(DataManagerPtr<Key, Value> dataManager, 
+              typename ValuesStorage<Value>::iterator position,
+              typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)
          : m_dataManager(dataManager)
          , m_position(position)
+         , m_newValueAvailableHandler(std::move(newValueAvailableHandler))
       {
       }
 
       ~Locator()
       {
-         // TODO: think one more time about DataManager, Locators, Tasks, ConsumerProcessor destruction
-         //m_dataManager->unregisterLocator(getPosition());
          // There is no need to call Stop() here, cause DataManager hasn't already had the reference to this locator, as it is a destructor
          m_dataManager->unregisterLocator(this);
       }
@@ -80,12 +81,6 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
          return m_isStopRequested;
       }
 
-      void SetNewValueAvailableHandler(std::function<void(IValueSourcePtr<Key, Value> valueSource)> handler) override
-      {
-         std::scoped_lock lock(m_mutex);
-         m_newValueAvailableHandler = std::move(handler);
-      }
-
    private:
 
       using std::enable_shared_from_this<Locator<Key, Value>>::shared_from_this;
@@ -98,10 +93,6 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       void onNewValueAvailable()
       {
-         std::function<void(IValueSourcePtr<Key, Value> valueSource)>
-
-         std::scoped_lock lock(m_mutex);
-
          if (m_newValueAvailableHandler)
          {
             m_newValueAvailableHandler(shared_from_this());
@@ -112,8 +103,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       std::atomic_bool m_isStopRequested = false;
       DataManagerPtr<Key, Value> m_dataManager;
       typename ValuesStorage<Value>::iterator m_position;
-      std::mutex m_mutex; // guards m_newValueAvailableHandler
-      std::function<void(IValueSourcePtr<Key, Value> valueSource)> m_newValueAvailableHandler;
+      const typename IValueSource<Key, Value>::FnNewAvailableValueHandler m_newValueAvailableHandler;
    };
 
    template <typename Key, typename Value>
@@ -164,12 +154,14 @@ public:
    /// <summary>
    /// Creates new value source for a consumer
    /// </summary>
-   IValueSourcePtr<Key, Value> CreateValueSource()
+   IValueSourcePtr<Key, Value> CreateValueSource(
+      typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)
    {
       std::scoped_lock lock(m_mutex);
 
-      // Regardless m_values emptiness a new locator alway points to the end, as all data in m_values is oldated for it
-      return m_locators.emplace_back(std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end()));
+      // Regardless m_values emptiness a new locator alway points to the end, cause all data in m_values is considiered as outdated for it
+      return m_locators.emplace_back(
+         std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end(), std::move(newValueAvailableHandler)));
    }
 
    bool HasActiveValueSources() const

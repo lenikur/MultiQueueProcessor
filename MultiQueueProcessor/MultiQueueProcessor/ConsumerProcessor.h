@@ -33,7 +33,6 @@ public:
    ~ConsumerProcessor()
    {
       std::scoped_lock lock(m_valueSourceMutex);
-      // TODO: Do we really need it?
       for (auto& [key, valueSource] : m_valueSources)
       {
          valueSource->Stop();
@@ -45,22 +44,32 @@ public:
    ConsumerProcessor(ConsumerProcessor&&) = delete;
    ConsumerProcessor& operator=(ConsumerProcessor&&) = delete;
 
-   void AddValueSource(const Key& key, IValueSourcePtr<Key, Value> valueSource) // TODO: remove key argument as valueSource does have it
+   using FnCreateValueSource = 
+      std::function<IValueSourcePtr<Key, Value>(
+         typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)>;
+
+   /// <summary>
+   /// Adds a value source to consumer processor
+   /// </summary>
+   /// <param name="key">A key for which a processed consumer needs data.</param>
+   /// <param name="createValueSource">A functor that creates a new value source for the passed key.</param>
+   void AddValueSource(const Key& key, FnCreateValueSource createValueSource)
    {
       std::scoped_lock lock(m_valueSourceMutex);
 
-      const auto& [itValueSource, isAdded] = m_valueSources.try_emplace(key, std::move(valueSource));
-
-      if (isAdded) // TODO: out of lock?
+      if (std::end(m_valueSources) != m_valueSources.find(key))
       {
-         itValueSource->second->SetNewValueAvailableHandler([processor = weak_from_this()](IValueSourcePtr<Key, Value> valueSource)
+         return; // avoid a double subscription
+      }
+
+      m_valueSources.try_emplace(key, 
+         createValueSource([processor = weak_from_this()](IValueSourcePtr<Key, Value> valueSource)
          {
             if (auto spProcessor = processor.lock())
             {
-               spProcessor->onNewValueAvailable(valueSource);
+               spProcessor->onNewValueAvailable(std::move(valueSource));
             }
-         });
-      }
+         }));
    }
 
    void RemoveSubscription(const Key& key)
@@ -201,7 +210,7 @@ private:
    const std::uintptr_t m_token; 
    std::mutex m_mutex; // guards m_state and m_valueSourceProcessingOrder
    EState m_state = EState::free;
-   std::deque<IValueSourceWeakPtr<Key, Value>> m_valueSourceProcessingOrder;
+   std::deque<IValueSourceWeakPtr<Key, Value>> m_valueSourceProcessingOrder; // keeps the calls order close to original
    mutable std::mutex m_valueSourceMutex; // guards m_valueSources
    std::unordered_map<Key, IValueSourcePtr<Key, Value>, Hash> m_valueSources;
    const std::shared_ptr<TPool> m_threadPool;
