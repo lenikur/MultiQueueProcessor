@@ -7,8 +7,6 @@
 #include "IConsumer.h"
 #include "IValueSource.h"
 
-std::atomic_int32_t s_taskQueueSize = 0;
-
 namespace MQP
 {
 
@@ -60,6 +58,9 @@ public:
       m_valueSources.try_emplace(key, std::move(valueSource));
    }
 
+   /// <summary>
+   /// Removes consumer's subscription to a passed key
+   /// </summary>
    void RemoveSubscription(const Key& key)
    {
       IValueSourcePtr<Key, Value> valueSource;
@@ -97,17 +98,10 @@ private:
    using std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>::weak_from_this;
 
    /// <summary>
-   /// Creates a task for passing it to the thread pool.
+   /// Creates a consumer notification task for passing it to the thread pool.
    /// </summary>
    std::packaged_task<void()> createTask(IValueSourceWeakPtr<Key, Value> valueSource)
    {
-      const auto s = m_valueSourceProcessingOrder.size();
-      if (s > s_taskQueueSize)
-      {
-         s_taskQueueSize = s;
-      }
-      std::cout << int(s_taskQueueSize) << " - " << m_valueSourceProcessingOrder.size() << std::endl;
-
       return std::packaged_task<void()>([processor = weak_from_this(), valueSource = valueSource]()
       {
          auto spProcessor = processor.lock();
@@ -131,7 +125,7 @@ private:
    }
 
    /// <summary>
-   /// The task completion handler.
+   /// A consumer notification task completion handler.
    /// </summary>
    void onValueProcessed()
    {
@@ -168,7 +162,7 @@ private:
    }
 
    /// <summary>
-   /// A new value available in the value source event handler
+   /// A new value available in the passed value source event handler
    /// </summary>
    void OnNewValueAvailable(IValueSourcePtr<Key, Value> valueSource) override
    {

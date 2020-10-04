@@ -84,7 +84,7 @@ public:
    /// <summary>
    /// Unsubscribes a consumer from value notifications by the key.
    /// There is no guarantee that the consumer won't receive notifications immediately after the method call,
-   /// but the consumer's life time is prolonged at least till the end of notification.
+   /// but the consumer's life time is prolonged at least till the end of the notification.
    /// </summary>
    void Unsubscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
@@ -132,7 +132,7 @@ public:
    }
 
    /// <summary>
-   /// Enqueue a value for a key.
+   /// Enqueues a value for a key.
    /// </summary>
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)

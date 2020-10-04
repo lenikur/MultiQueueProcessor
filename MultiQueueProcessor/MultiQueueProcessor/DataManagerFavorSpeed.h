@@ -149,7 +149,6 @@ public:
    using std::enable_shared_from_this<DataManagerFavorSpeed<Key, Value>>::shared_from_this;
 
 private:
-   enum { value, counter };
 
    /// <summary>
    /// Unsubscribe the passed locator from updates
