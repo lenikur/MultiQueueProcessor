@@ -40,9 +40,15 @@ public:
    virtual bool MoveNext() = 0;
 
    /// <summary>
-   /// Deactivates a value source
+   /// Deactivates a value source. Must be called by the interface consumer before desctruction.
    /// </summary>
    virtual void Stop() = 0;
+
+   /// <summary>
+   /// Whether the values source is stopped
+   /// </summary>
+   /// <returns></returns>
+   virtual bool IsStopped() const = 0;
 
    /// <summary>
    /// Sets a new available value event handler.

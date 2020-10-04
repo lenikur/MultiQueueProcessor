@@ -45,7 +45,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       {
          // TODO: think one more time about DataManager, Locators, Tasks, ConsumerProcessor destruction
          //m_dataManager->unregisterLocator(getPosition());
-         // There is no need to call Stop() here, cause DataManager hasn't already had the reference to this locator, as it is destructor
+         // There is no need to call Stop() here, cause DataManager hasn't already had the reference to this locator, as it is a destructor
          m_dataManager->unregisterLocator(this);
       }
 
@@ -71,11 +71,18 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       void Stop() override
       {
+         m_isStopRequested = true;
          m_dataManager->unsubscribeLocator(shared_from_this());
+      }
+
+      bool IsStopped() const override
+      {
+         return m_isStopRequested;
       }
 
       void SetNewValueAvailableHandler(std::function<void(IValueSourcePtr<Key, Value> valueSource)> handler) override
       {
+         std::scoped_lock lock(m_mutex);
          m_newValueAvailableHandler = std::move(handler);
       }
 
@@ -91,6 +98,10 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       void onNewValueAvailable()
       {
+         std::function<void(IValueSourcePtr<Key, Value> valueSource)>
+
+         std::scoped_lock lock(m_mutex);
+
          if (m_newValueAvailableHandler)
          {
             m_newValueAvailableHandler(shared_from_this());
@@ -98,8 +109,10 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       }
 
    private:
+      std::atomic_bool m_isStopRequested = false;
       DataManagerPtr<Key, Value> m_dataManager;
       typename ValuesStorage<Value>::iterator m_position;
+      std::mutex m_mutex; // guards m_newValueAvailableHandler
       std::function<void(IValueSourcePtr<Key, Value> valueSource)> m_newValueAvailableHandler;
    };
 

@@ -39,6 +39,9 @@
     <ClInclude Include="IValueSource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CancellationToken.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

@@ -38,13 +38,14 @@ public:
          ss << "************************************************************************************************";
       }
 
-      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << std::endl;
+      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << "Total calls count: " << ++CallsCount << std::endl;
       std::cout << ss.str();
 
       --ExpectedCallsCount;
    }
 
    std::atomic_uint32_t ExpectedCallsCount;
+   std::atomic_uint32_t CallsCount = 0;
 };
 
 using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, MyHash>;
@@ -135,7 +136,7 @@ void subscriptionTest()
    const MyKey key2{ 2 };
    const MyKey key3{ 3 };
 
-   constexpr std::uint32_t valuesCount = 1000000;
+   constexpr std::int32_t valuesCount = 1000000;
    auto consumer = std::make_shared<Consumer>(valuesCount * 2);
    
    auto consumer2 = std::make_shared<Consumer>(valuesCount);
@@ -149,8 +150,9 @@ void subscriptionTest()
 
    boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount]()
       {
-         for (std::uint32_t i = 0; i < valuesCount; ++i)
+         for (std::int32_t i = 0; i < valuesCount; ++i)
          {
+            std::this_thread::sleep_for(1ms);
             MyVal value{ std::to_string(i) };
             processor.Enqueue(key, value);
          }
@@ -158,8 +160,39 @@ void subscriptionTest()
 
    boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
       {
-         for (std::uint32_t i = 0; i < valuesCount; ++i)
+         for (std::int32_t i = 0; i < valuesCount; ++i)
          {
+            std::this_thread::sleep_for(1ms);
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
+      {
+         for (std::int32_t i = -valuesCount; i < 0; --i)
+         {
+            std::this_thread::sleep_for(1ms);
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
+      {
+         for (std::int32_t i = 0; i < valuesCount; ++i)
+         {
+            std::this_thread::sleep_for(1ms);
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
+      {
+         for (std::int32_t i = 0; i < valuesCount; ++i)
+         {
+            std::this_thread::sleep_for(1ms);
             MyVal value{ std::to_string(i) };
             processor.Enqueue(key, value);
          }
