@@ -135,6 +135,7 @@ public:
             auto& position = locator->getPosition();
             if (position == std::end(m_values))
             {
+               // all locators are reached m_values end, are set to last value (the new one)
                position = itBack;
                ++(std::get<counter>(*position));
             }

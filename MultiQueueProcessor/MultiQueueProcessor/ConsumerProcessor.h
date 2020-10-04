@@ -21,8 +21,6 @@ class ConsumerProcessor final : public IValueSourceConsumer<Key, Value>
                               , public std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>
 {
    enum class EState { free, processing };
-   enum ETask {task, cancellationToken};
-   enum EValueSource {valueSource, cancellationTokenSource};
 public:
    ConsumerProcessor(IConsumerPtr<Key, Value> consumer, std::shared_ptr<TPool> threadPool) 
       : m_consumer(std::move(consumer))
@@ -44,10 +42,6 @@ public:
    ConsumerProcessor& operator=(const ConsumerProcessor&) = delete;
    ConsumerProcessor(ConsumerProcessor&&) = delete;
    ConsumerProcessor& operator=(ConsumerProcessor&&) = delete;
-
-   using FnCreateValueSource = 
-      std::function<IValueSourcePtr<Key, Value>(
-         typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)>;
 
    /// <summary>
    /// Adds a value source to consumer processor
