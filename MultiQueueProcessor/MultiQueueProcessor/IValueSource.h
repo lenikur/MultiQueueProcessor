@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <functional>
 
 namespace MQP
 {
@@ -24,7 +23,7 @@ public:
    virtual ~IValueSourceConsumer() = 0 {}
 
    /// <summary>
-   /// A new available value handler type.
+   /// A new available value handler.
    /// </summary>
    virtual void OnNewValueAvailable(IValueSourcePtr<Key, Value> valueSource) = 0;
 };
@@ -46,7 +45,7 @@ public:
    /// <summary>
    /// Gets a current value
    /// </summary>
-   virtual std::tuple<const Key&, const Value&> GetValue() const = 0; // TODO: unite GetValue and HasValue
+   virtual std::tuple<const Key&, const Value&> GetValue() const = 0;
 
    /// <summary>
    /// Checks whether a value is available in a source

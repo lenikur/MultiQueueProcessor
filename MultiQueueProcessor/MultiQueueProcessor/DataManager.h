@@ -3,7 +3,6 @@
 #include <list>
 #include <tuple>
 #include <shared_mutex>
-//#include <functional>
 
 #include <assert.h>
 
@@ -118,7 +117,7 @@ public:
    {}
 
    /// <summary>
-   /// Adds new value
+   /// Adds a new value
    /// </summary>
    template <typename TValue>
    void AddValue(TValue&& value)
@@ -153,7 +152,7 @@ public:
    }
 
    /// <summary>
-   /// Creates new value source for a consumer
+   /// Creates a new value source for a consumer
    /// </summary>
    IValueSourcePtr<Key, Value> CreateValueSource(IValueSourceConsumerPtr<Key, Value> consumer)
    {
@@ -161,13 +160,6 @@ public:
 
       // Regardless m_values emptiness a new locator alway points to the end, cause all data in m_values is considiered as outdated for it
       return m_locators.emplace_back(std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end(), std::move(consumer)));
-   }
-
-   bool HasActiveValueSources() const
-   {
-      std::scoped_lock lock(m_mutex);
-
-      return !m_locators.empty();
    }
 
    using std::enable_shared_from_this<DataManager<Key, Value>>::shared_from_this;
@@ -225,11 +217,11 @@ private:
 
          if (itUnsubscribedLocator == std::end(m_locators))
          {
-            assert(false); // TODO: check a correctess
+            assert(false);
             return;
          }
 
-         unsubscribedLocator = std::move(*itUnsubscribedLocator); // TODO: ensure a correctness
+         unsubscribedLocator = std::move(*itUnsubscribedLocator);
          m_locators.erase(itUnsubscribedLocator);
       }
    }
@@ -269,7 +261,7 @@ private:
    mutable std::shared_mutex m_mutex; // guards m_values and m_locators
    const Key m_key;
    ValuesStorage<Value> m_values;
-   std::vector<LocatorPtr<Key, Value>> m_locators; // TODO: think about unordered_set
+   std::vector<LocatorPtr<Key, Value>> m_locators;
 };
 
 }

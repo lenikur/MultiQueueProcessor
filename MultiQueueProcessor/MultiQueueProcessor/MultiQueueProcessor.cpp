@@ -9,13 +9,14 @@
 #include <assert.h>
 #include <chrono>
 
+
 #include "ThreadPoolBoost.h"
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
 
-extern std::atomic_int32_t s_taskQueueSize;
-
 using namespace std::chrono;
+
+
 /// <summary>
 /// Simple consumer
 /// </summary>
@@ -32,23 +33,21 @@ public:
    {
       std::stringstream ss;
 
-      if (key == 1)
-      {
-         return;
-         ss << "************************************************************************************************";
-      }
-
-      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << "Total calls count: " << ++CallsCount << std::endl;
+      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << "Total calls count: " << std::endl;
       std::cout << ss.str();
 
       --ExpectedCallsCount;
    }
 
    std::atomic_uint32_t ExpectedCallsCount;
-   std::atomic_uint32_t CallsCount = 0;
 };
 
-using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, MyHash>;
+namespace
+{
+   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::size;
+}
+
+using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, multiQueueTuning, MyHash>;
 using Consumer = TTestConsumer<MyKey, MyVal>;
 using ConsumerPtr = std::shared_ptr < TTestConsumer<MyKey, MyVal>>;
 
@@ -144,7 +143,7 @@ void subscriptionTest()
    processor.Subscribe(key1, consumer);
    processor.Subscribe(key2, consumer);
 
-   //processor.Subscribe(key1, consumer2);
+   processor.Subscribe(key1, consumer2);
 
    boost::asio::thread_pool pool;
 
@@ -182,7 +181,7 @@ void subscriptionTest()
       {
          for (std::int32_t i = 0; i < valuesCount; ++i)
          {
-            std::this_thread::sleep_for(1ms);
+            //std::this_thread::sleep_for(1ms);
             MyVal value{ std::to_string(i) };
             processor.Enqueue(key, value);
          }
@@ -192,7 +191,7 @@ void subscriptionTest()
       {
          for (std::int32_t i = 0; i < valuesCount; ++i)
          {
-            std::this_thread::sleep_for(1ms);
+            //std::this_thread::sleep_for(1ms);
             MyVal value{ std::to_string(i) };
             processor.Enqueue(key, value);
          }
@@ -294,21 +293,24 @@ void demoValueCopiesCount(EDemo mode)
 
 int main()
 {
-   subscriptionTest();
+   //subscriptionTest();
 
-   //std::cout << "******************* Sample *******************" << std::endl;
-   //sample();
+   std::cout << "******************* Sample *******************" << std::endl;
+   sample();
 
-   //std::cout << "********** Sample one consumer many keys **********" << std::endl;
-   //sampleOneSubscriberManyKeys();
+   std::cout << "********** Sample one consumer many keys **********" << std::endl;
+   sampleOneSubscriberManyKeys();
 
-   //MyVal::_copyAndCreateCallsCount = 0; // reset
-   //std::cout << "******************* Lvalue demo *******************" << std::endl;
-   //demoValueCopiesCount(EDemo::lvalue);
+   if (multiQueueTuning == MQP::ETuning::size)
+   {
+      MyVal::_copyAndCreateCallsCount = 0; // reset
+      std::cout << "******************* Lvalue demo *******************" << std::endl;
+      demoValueCopiesCount(EDemo::lvalue);
 
-   //MyVal::_copyAndCreateCallsCount = 0; // reset
-   //std::cout << "******************* Rvalue demo *******************" << std::endl;
-   //demoValueCopiesCount(EDemo::rvalue);
+      MyVal::_copyAndCreateCallsCount = 0; // reset
+      std::cout << "******************* Rvalue demo *******************" << std::endl;
+      demoValueCopiesCount(EDemo::rvalue);
+   }
 
    return 0;
 }

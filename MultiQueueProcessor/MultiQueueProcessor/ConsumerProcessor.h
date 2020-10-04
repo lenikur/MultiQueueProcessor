@@ -57,7 +57,7 @@ public:
          return; // avoid a double subscription
       }
 
-      m_valueSources.try_emplace(key, valueSource);
+      m_valueSources.try_emplace(key, std::move(valueSource));
    }
 
    void RemoveSubscription(const Key& key)
@@ -80,7 +80,7 @@ public:
       valueSource->Stop();
    }
 
-   bool IsSubscribedToAny() const // TODO: need it?
+   bool IsSubscribedToAny() const
    {
       std::scoped_lock lock(m_valueSourceMutex);
 
@@ -118,7 +118,7 @@ private:
 
          if (auto spValueSource = valueSource.lock())
          {
-            if (!spValueSource->IsStopped() && spValueSource->HasValue()) // TODO: really need this check?
+            if (!spValueSource->IsStopped() && spValueSource->HasValue())
             {
                const auto& [key, value] = spValueSource->GetValue();
                spProcessor->GetConsumer()->Consume(key, value);
@@ -149,7 +149,6 @@ private:
             auto valueSource = nextValueSource.lock();
             if (!valueSource || valueSource->IsStopped())
             {
-               std::cout << "--------------------------------------------------------------------------- onValueProcessed skip" << std::endl;
                continue; // skip all stopped value sources
             }
 
@@ -157,7 +156,7 @@ private:
             break;
          }
 
-         if (m_valueSourceProcessingOrder.empty())
+         if (!nextTask.valid() && m_valueSourceProcessingOrder.empty())
          {
             m_state = EState::free;
             return;

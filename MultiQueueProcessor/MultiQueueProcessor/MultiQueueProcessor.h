@@ -5,6 +5,7 @@
 #include <shared_mutex>
 #include <memory>
 #include <deque>
+#include <type_traits>
 
 #include "ConsumerProcessor.h"
 #include "DataManager.h"
@@ -12,15 +13,25 @@
 
 namespace MQP
 {
+
+/// <summary>
+/// MultiQueueProcessor's data management alternatives
+/// </summary>
+enum class ETuning {size /*DataManager*/, speed /*DataManagerFavorSpeed*/};
+
 /// <summary>
 /// Multi queue processor.
 /// Makes a single copy of enqueued value in case it is an lvalue regardless of number of consumers for movable Value.
 /// Makes no copy of enqueued value in case it is a rvalue regardless of number of consumers for movable Value.
 /// </summary>
-template<typename Key, typename Value, typename TPool, typename Hash = std::hash<typename Key>>
+template<typename Key, typename Value, typename TPool, ETuning TUNING, typename Hash = std::hash<typename Key>>
 class MultiQueueProcessor
 {
    enum {dataManager, subscribersToKey};
+
+   using KeyDataManager = std::conditional_t<TUNING == ETuning::size, DataManager<Key, Value>, DataManagerFavorSpeed<Key, Value>>;
+   using KeyDataManagerPtr = std::shared_ptr<KeyDataManager>;
+
 public:
    /// <summary>
    /// Ctor
@@ -40,8 +51,6 @@ public:
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
-      std::cout << "*********************************** Subscribe" << std::endl;
-
       if (!consumer)
       {
          return;
@@ -52,7 +61,7 @@ public:
       auto itDataManager = m_dataManagers.find(key);
       if (itDataManager == std::end(m_dataManagers))
       {
-         auto it = m_dataManagers.try_emplace(key, std::make_shared<DataManager<Key, Value>>(key), std::deque<IConsumerPtr<Key, Value>>{consumer});
+         auto it = m_dataManagers.try_emplace(key, std::make_shared<KeyDataManager>(key), std::deque<IConsumerPtr<Key, Value>>{consumer});
          assert(it.second);
          itDataManager = it.first;
       }
@@ -79,8 +88,6 @@ public:
    /// </summary>
    void Unsubscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
-      std::cout << "------------------------------------------------------Unsubscribe" << std::endl;
-
       std::scoped_lock lock(m_mutex);
 
       const auto itConsumerProcessor = m_consumerProcessors.find(consumer);
@@ -109,8 +116,6 @@ public:
 
       subscribers.erase(itSubscriberToKey);
 
-      // TODO think about it as an alternative to deque<Subscribers>
-      //if (!itDataManager->second->HasActiveValueSource())
       if (subscribers.empty())
       {
          // there are no subscribers to the key, it's time to remove it
@@ -124,7 +129,6 @@ public:
       {
          m_consumerProcessors.erase(itConsumerProcessor);
       }
-
    }
 
    /// <summary>
@@ -133,7 +137,7 @@ public:
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)
    {
-      DataManagerPtr<Key, Value> keyDataManager;
+      KeyDataManagerPtr keyDataManager;
 
       {
          std::shared_lock sharedLock(m_mutex);
@@ -153,7 +157,7 @@ public:
 private:
    std::shared_mutex m_mutex; // guards m_consumerProcessors and m_dataManagers
    std::unordered_map<IConsumerPtr<Key, Value>, ConsumerProcessorPtr<Key, Value, TPool, Hash>> m_consumerProcessors;
-   std::unordered_map<Key, std::tuple<DataManagerPtr<Key, Value>, std::deque<IConsumerPtr<Key, Value>>>, Hash> m_dataManagers;
+   std::unordered_map<Key, std::tuple<KeyDataManagerPtr, std::deque<IConsumerPtr<Key, Value>>>, Hash> m_dataManagers;
    const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers calls" tasks execution
 };
 }

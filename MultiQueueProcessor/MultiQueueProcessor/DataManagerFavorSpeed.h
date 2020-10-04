@@ -3,7 +3,6 @@
 #include <deque>
 #include <tuple>
 #include <shared_mutex>
-#include <functional>
 
 #include <assert.h>
 
@@ -20,10 +19,10 @@ using DataManagerFavorSpeedPtr = std::shared_ptr<DataManagerFavorSpeed<Key, Valu
 
 /// <summary>
 /// The class manages all incoming values and creates instances of IValueSource implementation (see DataManagerFavorSpeed::Locator).
-/// Each Locator copies incomming  keeps values 
+/// Each Locator copies and keeps incoming value
 /// </summary>
 template <typename Key, typename Value>
-class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManager<Key, Value>>
+class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManagerFavorSpeed<Key, Value>>
 {
    /// <summary>
    /// The class implements IValueSource interface and controls sequantial reading for one consumer regardless others.
@@ -31,7 +30,7 @@ class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManager<Ke
    template <typename Key, typename Value>
    class Locator : public IValueSource<Key, Value>, public std::enable_shared_from_this<Locator<Key, Value>>
    {
-      friend DataManager<Key, Value>;
+      friend DataManagerFavorSpeed<Key, Value>;
    public:
       Locator(DataManagerFavorSpeedPtr<Key, Value> dataManager, IValueSourceConsumerPtr<Key, Value> consumer, const Key& key)
          : m_dataManager(std::move(dataManager))
@@ -57,7 +56,7 @@ class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManager<Ke
       {
          std::scoped_lock lock(m_mutex);
 
-         m_values.pop();
+         m_values.pop_front();
          return !m_values.empty();
       }
 
@@ -70,8 +69,6 @@ class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManager<Ke
 
       void Stop() override
       {
-         std::scoped_lock lock(m_mutex);
-
          m_isStopRequested = true;
          m_dataManager->unsubscribeLocator(shared_from_this());
       }
@@ -103,7 +100,7 @@ class DataManagerFavorSpeed : public std::enable_shared_from_this<DataManager<Ke
       std::atomic_bool m_isStopRequested = false;
       DataManagerFavorSpeedPtr<Key, Value> m_dataManager;
       const IValueSourceConsumerWeakPtr<Key, Value> m_consumer;
-      std::mutex m_mutex; // guards m_values
+      mutable std::mutex m_mutex; // guards m_values
       std::deque<Value> m_values;
       const Key m_key;
    };
@@ -120,7 +117,7 @@ public:
    {}
 
    /// <summary>
-   /// Adds new value
+   /// Adds a new value
    /// </summary>
    template <typename TValue>
    void AddValue(TValue&& value)
@@ -140,7 +137,7 @@ public:
    }
 
    /// <summary>
-   /// Creates new value source for a consumer
+   /// Creates a new value source for a consumer
    /// </summary>
    IValueSourcePtr<Key, Value> CreateValueSource(IValueSourceConsumerPtr<Key, Value> consumer)
    {
@@ -149,14 +146,7 @@ public:
       return m_locators.emplace_back(std::make_shared<Locator<Key, Value>>(shared_from_this(), std::move(consumer), m_key));
    }
 
-   bool HasActiveValueSources() const
-   {
-      std::scoped_lock lock(m_mutex);
-
-      return !m_locators.empty();
-   }
-
-   using std::enable_shared_from_this<DataManager<Key, Value>>::shared_from_this;
+   using std::enable_shared_from_this<DataManagerFavorSpeed<Key, Value>>::shared_from_this;
 
 private:
    enum { value, counter };
@@ -191,7 +181,7 @@ private:
 private:
    mutable std::shared_mutex m_mutex; // guards m_values and m_locators
    const Key m_key;
-   std::vector<LocatorPtr<Key, Value>> m_locators; // TODO: think about unordered_set
+   std::vector<LocatorPtr<Key, Value>> m_locators;
 };
 
 }
