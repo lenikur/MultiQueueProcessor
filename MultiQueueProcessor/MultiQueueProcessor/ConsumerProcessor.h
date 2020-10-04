@@ -17,7 +17,8 @@ namespace MQP
 /// Also, the class controls that only one task is processed in the thread pool for the consumer at a time.
 /// </summary>
 template<typename Key, typename Value, typename TPool, typename Hash>
-class ConsumerProcessor final : public std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>
+class ConsumerProcessor final : public IValueSourceConsumer<Key, Value>
+                              , public std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>
 {
    enum class EState { free, processing };
    enum ETask {task, cancellationToken};
@@ -52,8 +53,8 @@ public:
    /// Adds a value source to consumer processor
    /// </summary>
    /// <param name="key">A key for which a processed consumer needs data.</param>
-   /// <param name="createValueSource">A functor that creates a new value source for the passed key.</param>
-   void AddValueSource(const Key& key, FnCreateValueSource createValueSource)
+   /// <param name="valueSource">A value source which provides data for the passed key.</param>
+   void AddValueSource(const Key& key, IValueSourcePtr<Key, Value> valueSource)
    {
       std::scoped_lock lock(m_valueSourceMutex);
 
@@ -62,14 +63,7 @@ public:
          return; // avoid a double subscription
       }
 
-      m_valueSources.try_emplace(key, 
-         createValueSource([processor = weak_from_this()](IValueSourcePtr<Key, Value> valueSource)
-         {
-            if (auto spProcessor = processor.lock())
-            {
-               spProcessor->onNewValueAvailable(std::move(valueSource));
-            }
-         }));
+      m_valueSources.try_emplace(key, valueSource);
    }
 
    void RemoveSubscription(const Key& key)
@@ -183,7 +177,7 @@ private:
    /// <summary>
    /// A new value available in the value source event handler
    /// </summary>
-   void onNewValueAvailable(IValueSourcePtr<Key, Value> valueSource)
+   void OnNewValueAvailable(IValueSourcePtr<Key, Value> valueSource) override
    {
       std::packaged_task<void()> task;
 

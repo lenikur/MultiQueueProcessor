@@ -15,6 +15,26 @@ template <typename Key, typename Value>
 using IValueSourceWeakPtr = std::weak_ptr<IValueSource<Key, Value>>;
 
 /// <summary>
+/// The interface describes a consumer of IValueSource<Key, Value>
+/// </summary>
+template <typename Key, typename Value>
+class IValueSourceConsumer
+{
+public:
+   virtual ~IValueSourceConsumer() = 0 {}
+
+   /// <summary>
+   /// A new available value handler type.
+   /// </summary>
+   virtual void OnNewValueAvailable(IValueSourcePtr<Key, Value> valueSource) = 0;
+};
+
+template <typename Key, typename Value>
+using IValueSourceConsumerPtr = std::shared_ptr<IValueSourceConsumer<Key, Value>>;
+template <typename Key, typename Value>
+using IValueSourceConsumerWeakPtr = std::weak_ptr<IValueSourceConsumer<Key, Value>>;
+
+/// <summary>
 /// The interface describes a value source
 /// </summary>
 template <typename Key, typename Value>
@@ -49,11 +69,6 @@ public:
    /// </summary>
    /// <returns></returns>
    virtual bool IsStopped() const = 0;
-
-   /// <summary>
-   /// A new available value handler type.
-   /// </summary>
-   using FnNewAvailableValueHandler = std::function<void(IValueSourcePtr<Key, Value> valueSource)>;
 };
 
 }

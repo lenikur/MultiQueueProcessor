@@ -35,12 +35,10 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
    {
       friend DataManager<Key, Value>;
    public:
-      Locator(DataManagerPtr<Key, Value> dataManager, 
-              typename ValuesStorage<Value>::iterator position,
-              typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)
+      Locator(DataManagerPtr<Key, Value> dataManager, typename ValuesStorage<Value>::iterator position, IValueSourceConsumerPtr<Key, Value> consumer)
          : m_dataManager(dataManager)
          , m_position(position)
-         , m_newValueAvailableHandler(std::move(newValueAvailableHandler))
+         , m_consumer(std::move(consumer))
       {
       }
 
@@ -93,9 +91,9 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
 
       void onNewValueAvailable()
       {
-         if (m_newValueAvailableHandler)
+         if (auto spConsumer = m_consumer.lock())
          {
-            m_newValueAvailableHandler(shared_from_this());
+            spConsumer->OnNewValueAvailable(shared_from_this());
          }
       }
 
@@ -103,7 +101,7 @@ class DataManager : public std::enable_shared_from_this<DataManager<Key, Value>>
       std::atomic_bool m_isStopRequested = false;
       DataManagerPtr<Key, Value> m_dataManager;
       typename ValuesStorage<Value>::iterator m_position;
-      const typename IValueSource<Key, Value>::FnNewAvailableValueHandler m_newValueAvailableHandler;
+      const IValueSourceConsumerWeakPtr<Key, Value> m_consumer;
    };
 
    template <typename Key, typename Value>
@@ -154,14 +152,12 @@ public:
    /// <summary>
    /// Creates new value source for a consumer
    /// </summary>
-   IValueSourcePtr<Key, Value> CreateValueSource(
-      typename IValueSource<Key, Value>::FnNewAvailableValueHandler newValueAvailableHandler)
+   IValueSourcePtr<Key, Value> CreateValueSource(IValueSourceConsumerPtr<Key, Value> consumer)
    {
       std::scoped_lock lock(m_mutex);
 
       // Regardless m_values emptiness a new locator alway points to the end, cause all data in m_values is considiered as outdated for it
-      return m_locators.emplace_back(
-         std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end(), std::move(newValueAvailableHandler)));
+      return m_locators.emplace_back(std::make_shared<Locator<Key, Value>>(shared_from_this(), m_values.end(), std::move(consumer)));
    }
 
    bool HasActiveValueSources() const
