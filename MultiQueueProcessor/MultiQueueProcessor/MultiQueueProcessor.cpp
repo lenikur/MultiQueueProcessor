@@ -33,7 +33,7 @@ public:
    {
       std::stringstream ss;
 
-      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << "Total calls count: " << std::endl;
+      ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << std::endl;
       std::cout << ss.str();
 
       --ExpectedCallsCount;
@@ -44,7 +44,10 @@ public:
 
 namespace
 {
-   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::size;
+   /// <summary>
+   /// the value defines MQProcessor tuning parameter and is considered during samples launching (see main() implementation)
+   /// </summary>
+   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::speed;
 }
 
 using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, multiQueueTuning, MyHash>;
@@ -123,21 +126,15 @@ void sampleOneSubscriberManyKeys()
    }
 }
 
-void exitTest()
-{
-}
-
-void subscriptionTest()
+void subscriptionUnsubscriptionStress()
 {
    MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
 
    const MyKey key1{ 1 };
    const MyKey key2{ 2 };
-   const MyKey key3{ 3 };
 
-   constexpr std::int32_t valuesCount = 1000000;
+   constexpr std::int32_t valuesCount = 10000;
    auto consumer = std::make_shared<Consumer>(valuesCount * 2);
-   
    auto consumer2 = std::make_shared<Consumer>(valuesCount);
 
    processor.Subscribe(key1, consumer);
@@ -147,7 +144,17 @@ void subscriptionTest()
 
    boost::asio::thread_pool pool;
 
-   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount]()
+   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount / 2]()
+      {
+         for (std::int32_t i = 0; i < valuesCount; ++i)
+         {
+            std::this_thread::sleep_for(1ms);
+            MyVal value{ std::to_string(i) };
+            processor.Enqueue(key, value);
+         }
+      });
+
+   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount / 2]()
       {
          for (std::int32_t i = 0; i < valuesCount; ++i)
          {
@@ -167,51 +174,21 @@ void subscriptionTest()
          }
       });
 
-   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
+   boost::asio::post(pool, [&processor = processor, key = key1, consumer = consumer2]()
       {
-         for (std::int32_t i = -valuesCount; i < 0; --i)
+         for (int i = 0; i < 10; ++i)
          {
-            std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
+            processor.Unsubscribe(key, consumer);
+            std::this_thread::sleep_for(10ms);
 
-   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
-      {
-         for (std::int32_t i = 0; i < valuesCount; ++i)
-         {
-            //std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
-
-   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
-      {
-         for (std::int32_t i = 0; i < valuesCount; ++i)
-         {
-            //std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
-
-   boost::asio::post(pool, [&processor = processor, key1 = key1, key2 = key2, consumer = consumer]()
-      {
-         for (int i = 0; i < 10000; ++i)
-         {
-            processor.Unsubscribe(key2, consumer);
-            //std::this_thread::sleep_for(100ms);
-
-            processor.Subscribe(key2, consumer);
-            std::this_thread::sleep_for(5s);
+            processor.Subscribe(key, consumer);
+            std::this_thread::sleep_for(200ms);
          }
       });
 
    while (true)
    {
-      if (consumer2->ExpectedCallsCount == 0)
+      if (consumer->ExpectedCallsCount == 0)
       {
          return;
       }
@@ -293,7 +270,7 @@ void demoValueCopiesCount(EDemo mode)
 
 int main()
 {
-   //subscriptionTest();
+   subscriptionUnsubscriptionStress();
 
    std::cout << "******************* Sample *******************" << std::endl;
    sample();
