@@ -136,7 +136,7 @@ public:
             auto& position = locator->getPosition();
             if (position == std::end(m_values))
             {
-               // all locators are reached m_values end, are set to last value (the new one)
+               // all locators have reached m_values's end, are set to the last value (the new one)
                position = itBack;
                ++(std::get<counter>(*position));
             }
@@ -177,6 +177,7 @@ private:
    std::tuple<const Key&, const Value&> getValue(typename const ValuesStorage<Value>::iterator& position) const
    {
       std::shared_lock lock(m_mutex);
+
       assert(position != std::end(m_values));
       return { m_key, std::get<value>(*position) };
    }
@@ -233,8 +234,11 @@ private:
    {
       std::scoped_lock lock(m_mutex);
 
-      assert(locator != nullptr);
-      assert(locator->weak_from_this().expired()); // unsubscribeLocator must be called in dtor ONLY
+      if (locator == nullptr || !locator->weak_from_this().expired()) // unsubscribeLocator must be called in dtor ONLY
+      {
+         assert(false);
+         return;
+      }
 
       auto locatorPosition = locator->getPosition();
       if (locatorPosition == std::end(m_values))

@@ -15,20 +15,21 @@ namespace MQP
 {
 
 /// <summary>
-/// MultiQueueProcessor's data management alternatives
+/// MultiQueueProcessor's data management strategies
 /// </summary>
 enum class ETuning {size /*DataManager*/, speed /*DataManagerFavorSpeed*/};
 
 /// <summary>
-/// Multi queue processor.
-/// Makes a single copy of enqueued value in case it is an lvalue regardless of number of consumers for movable Value.
-/// Makes no copy of enqueued value in case it is a rvalue regardless of number of consumers for movable Value.
+/// Multi queue processor
 /// </summary>
 template<typename Key, typename Value, typename TPool, ETuning TUNING, typename Hash = std::hash<typename Key>>
 class MultiQueueProcessor
 {
    enum {dataManager, subscribersToKey};
 
+   /// <summary>
+   /// "Data manager" class selection 
+   /// </summary>
    using KeyDataManager = std::conditional_t<TUNING == ETuning::size, DataManager<Key, Value>, DataManagerFavorSpeed<Key, Value>>;
    using KeyDataManagerPtr = std::shared_ptr<KeyDataManager>;
 
@@ -36,7 +37,7 @@ public:
    /// <summary>
    /// Ctor
    /// </summary>
-   /// <param name="threadPool">A thread pool that is used for "consumers calls" tasks execution.</param>
+   /// <param name="threadPool">A thread pool that is used for the consumers notification tasks execution.</param>
    MultiQueueProcessor(std::shared_ptr<TPool> threadPool)
       : m_threadPool(std::move(threadPool))
    {}
@@ -70,7 +71,7 @@ public:
          auto& subscribers = std::get<subscribersToKey>(itDataManager->second);
          if (std::find(std::begin(subscribers), std::end(subscribers), consumer) != std::end(subscribers))
          {
-            // this subscriber has already been subscribed to the passed key, prevent a double subscribing
+            // this consumer has already been subscribed to the passed key, prevent a double subscription
             return;
          }
       }
@@ -78,6 +79,7 @@ public:
       auto [itConsumerProcessor, isInserted] = 
          m_consumerProcessors.emplace(consumer, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(consumer, m_threadPool));
 
+      // create and add a new value source to an existed consumer processor
       itConsumerProcessor->second->AddValueSource(key, std::get<dataManager>(itDataManager->second)->CreateValueSource(itConsumerProcessor->second));
    }
 

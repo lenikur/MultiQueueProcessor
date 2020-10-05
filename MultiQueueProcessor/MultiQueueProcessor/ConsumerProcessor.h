@@ -50,11 +50,6 @@ public:
    {
       std::scoped_lock lock(m_valueSourceMutex);
 
-      if (std::end(m_valueSources) != m_valueSources.find(key))
-      {
-         return; // avoid a double subscription
-      }
-
       m_valueSources.try_emplace(key, std::move(valueSource));
    }
 
@@ -157,7 +152,6 @@ private:
          }
       }
 
-
       m_threadPool->Post(std::move(nextTask), m_token);
    }
 
@@ -172,14 +166,14 @@ private:
          std::scoped_lock lock(m_mutex);
          if (m_state == EState::processing)
          {
-            m_valueSourceProcessingOrder.emplace_back(valueSource);
+            m_valueSourceProcessingOrder.emplace_back(std::move(valueSource));
             return;
          }
 
          assert(m_state == EState::free);
          m_state = EState::processing;
 
-         task = createTask(valueSource);
+         task = createTask(std::move(valueSource));
       }
 
       m_threadPool->Post(std::move(task), m_token);
