@@ -1,10 +1,9 @@
 #pragma once
 
-#include <mutex>
 #include <unordered_map>
 #include <shared_mutex>
 #include <memory>
-#include <deque>
+#include <vector>
 #include <type_traits>
 
 #include "ConsumerProcessor.h"
@@ -62,7 +61,7 @@ public:
       auto itDataManager = m_dataManagers.find(key);
       if (itDataManager == std::end(m_dataManagers))
       {
-         auto it = m_dataManagers.try_emplace(key, std::make_shared<KeyDataManager>(key), std::deque<IConsumerPtr<Key, Value>>{consumer});
+         auto it = m_dataManagers.try_emplace(key, std::make_shared<KeyDataManager>(key), std::vector<IConsumerPtr<Key, Value>>{consumer});
          assert(it.second);
          itDataManager = it.first;
       }
@@ -74,6 +73,8 @@ public:
             // this consumer has already been subscribed to the passed key, prevent a double subscription
             return;
          }
+
+         subscribers.emplace_back(consumer);
       }
 
       auto [itConsumerProcessor, isInserted] = 
@@ -159,7 +160,7 @@ public:
 private:
    std::shared_mutex m_mutex; // guards m_consumerProcessors and m_dataManagers
    std::unordered_map<IConsumerPtr<Key, Value>, ConsumerProcessorPtr<Key, Value, TPool, Hash>> m_consumerProcessors;
-   std::unordered_map<Key, std::tuple<KeyDataManagerPtr, std::deque<IConsumerPtr<Key, Value>>>, Hash> m_dataManagers;
+   std::unordered_map<Key, std::tuple<KeyDataManagerPtr, std::vector<IConsumerPtr<Key, Value>>>, Hash> m_dataManagers;
    const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers calls" tasks execution
 };
 }

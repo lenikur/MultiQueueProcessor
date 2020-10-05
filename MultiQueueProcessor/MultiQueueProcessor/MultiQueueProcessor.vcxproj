@@ -159,7 +159,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="CancellationToken.h" />
     <ClInclude Include="ConsumerProcessor.h" />
     <ClInclude Include="DataManager.h" />
     <ClInclude Include="DataManagerFavorSpeed.h" />

@@ -47,7 +47,7 @@ namespace
    /// <summary>
    /// the value defines MQProcessor tuning parameter and is considered during samples launching (see main() implementation)
    /// </summary>
-   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::speed;
+   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::size;
 }
 
 using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, multiQueueTuning, MyHash>;
@@ -114,77 +114,6 @@ void sampleOneSubscriberManyKeys()
             processor.Enqueue(key, value);
          });
    }
-
-   while (true)
-   {
-      if (consumer->ExpectedCallsCount == 0)
-      {
-         return;
-      }
-
-      std::this_thread::yield();
-   }
-}
-
-void subscriptionUnsubscriptionStress()
-{
-   MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
-
-   const MyKey key1{ 1 };
-   const MyKey key2{ 2 };
-
-   constexpr std::int32_t valuesCount = 10000;
-   auto consumer = std::make_shared<Consumer>(valuesCount * 2);
-   auto consumer2 = std::make_shared<Consumer>(valuesCount);
-
-   processor.Subscribe(key1, consumer);
-   processor.Subscribe(key2, consumer);
-
-   processor.Subscribe(key1, consumer2);
-
-   boost::asio::thread_pool pool;
-
-   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount / 2]()
-      {
-         for (std::int32_t i = 0; i < valuesCount; ++i)
-         {
-            std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
-
-   boost::asio::post(pool, [&processor, key = key1, valuesCount = valuesCount / 2]()
-      {
-         for (std::int32_t i = 0; i < valuesCount; ++i)
-         {
-            std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
-
-   boost::asio::post(pool, [&processor, key = key2, valuesCount = valuesCount]()
-      {
-         for (std::int32_t i = 0; i < valuesCount; ++i)
-         {
-            std::this_thread::sleep_for(1ms);
-            MyVal value{ std::to_string(i) };
-            processor.Enqueue(key, value);
-         }
-      });
-
-   boost::asio::post(pool, [&processor = processor, key = key1, consumer = consumer2]()
-      {
-         for (int i = 0; i < 10; ++i)
-         {
-            processor.Unsubscribe(key, consumer);
-            std::this_thread::sleep_for(10ms);
-
-            processor.Subscribe(key, consumer);
-            std::this_thread::sleep_for(200ms);
-         }
-      });
 
    while (true)
    {
@@ -270,8 +199,6 @@ void demoValueCopiesCount(EDemo mode)
 
 int main()
 {
-   subscriptionUnsubscriptionStress();
-
    std::cout << "******************* Sample *******************" << std::endl;
    sample();
 

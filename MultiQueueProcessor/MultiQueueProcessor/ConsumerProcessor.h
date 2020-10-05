@@ -3,6 +3,7 @@
 #include <mutex>
 #include <memory>
 #include <future>
+#include <deque>
 
 #include "IConsumer.h"
 #include "IValueSource.h"

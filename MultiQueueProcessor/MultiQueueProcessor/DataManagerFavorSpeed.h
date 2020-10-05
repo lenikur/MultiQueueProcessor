@@ -2,7 +2,7 @@
 
 #include <deque>
 #include <tuple>
-#include <shared_mutex>
+#include <mutex>
 
 #include <assert.h>
 
@@ -178,7 +178,7 @@ private:
    }
 
 private:
-   mutable std::shared_mutex m_mutex; // guards m_values and m_locators
+   mutable std::mutex m_mutex; // guards m_values and m_locators
    const Key m_key;
    std::vector<LocatorPtr<Key, Value>> m_locators;
 };
