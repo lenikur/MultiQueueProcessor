@@ -160,8 +160,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ConsumerProcessor.h" />
-    <ClInclude Include="ConsumerProcessorGroup.h" />
     <ClInclude Include="DataManager.h" />
+    <ClInclude Include="DataManagerFavorSpeed.h" />
     <ClInclude Include="IConsumer.h" />
     <ClInclude Include="IValueSource.h" />
     <ClInclude Include="MultiQueueProcessor.h" />

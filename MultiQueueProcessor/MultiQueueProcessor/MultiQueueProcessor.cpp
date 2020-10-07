@@ -7,10 +7,15 @@
 #include <string>
 #include <atomic>
 #include <assert.h>
+#include <chrono>
+
 
 #include "ThreadPoolBoost.h"
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
+
+using namespace std::chrono;
+
 
 /// <summary>
 /// Simple consumer
@@ -27,6 +32,7 @@ public:
    void Consume(const TKey& key, const Value& value) noexcept override
    {
       std::stringstream ss;
+
       ss << "TTestConsumer::Consume (" << this << ") key: " << key << ", value: " << value << std::endl;
       std::cout << ss.str();
 
@@ -36,7 +42,15 @@ public:
    std::atomic_uint32_t ExpectedCallsCount;
 };
 
-using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, MyHash>;
+namespace
+{
+   /// <summary>
+   /// the value defines MQProcessor tuning parameter and is considered during samples launching (see main() implementation)
+   /// </summary>
+   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::size;
+}
+
+using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, multiQueueTuning, MyHash>;
 using Consumer = TTestConsumer<MyKey, MyVal>;
 using ConsumerPtr = std::shared_ptr < TTestConsumer<MyKey, MyVal>>;
 
@@ -56,6 +70,49 @@ void sample()
    for (int i = 0; i < valuesCount; ++i)
    {
       processor.Enqueue(key, MyVal{ std::to_string(i) });
+   }
+
+   while (true)
+   {
+      if (consumer->ExpectedCallsCount == 0)
+      {
+         return;
+      }
+
+      std::this_thread::yield();
+   }
+}
+
+/// <summary>
+/// The function shows how to use MQProcessor. One consumer subscribed to 2 keys.
+/// </summary>
+void sampleOneSubscriberManyKeys()
+{
+   MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
+
+   const MyKey key1{ 1 };
+   const MyKey key2{ 2 };
+
+   constexpr std::uint32_t valuesCount = 10;
+   auto consumer = std::make_shared<Consumer>(valuesCount * 2);
+   processor.Subscribe(key1, consumer);
+   processor.Subscribe(key2, consumer);
+
+   boost::asio::thread_pool pool;
+
+   for (int i = 0; i < valuesCount; ++i)
+   {
+      MyVal value{ std::to_string(i) };
+      boost::asio::post(pool, [&processor, key = key1, value = value]()
+         {
+            processor.Enqueue(key, value);
+         });
+
+      boost::asio::post(pool, [&processor, key = key2, value = value]()
+         {
+            std::this_thread::sleep_for(50ms);
+            processor.Enqueue(key, value);
+         });
    }
 
    while (true)
@@ -145,13 +202,19 @@ int main()
    std::cout << "******************* Sample *******************" << std::endl;
    sample();
 
-   MyVal::_copyAndCreateCallsCount = 0; // reset
-   std::cout << "******************* Lvalue demo *******************" << std::endl;
-   demoValueCopiesCount(EDemo::lvalue);
+   std::cout << "********** Sample one consumer many keys **********" << std::endl;
+   sampleOneSubscriberManyKeys();
 
-   MyVal::_copyAndCreateCallsCount = 0; // reset
-   std::cout << "******************* Rvalue demo *******************" << std::endl;
-   demoValueCopiesCount(EDemo::rvalue);
+   if (multiQueueTuning == MQP::ETuning::size)
+   {
+      MyVal::_copyAndCreateCallsCount = 0; // reset
+      std::cout << "******************* Lvalue demo *******************" << std::endl;
+      demoValueCopiesCount(EDemo::lvalue);
+
+      MyVal::_copyAndCreateCallsCount = 0; // reset
+      std::cout << "******************* Rvalue demo *******************" << std::endl;
+      demoValueCopiesCount(EDemo::rvalue);
+   }
 
    return 0;
 }
