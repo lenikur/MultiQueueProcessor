@@ -8,7 +8,6 @@ namespace MQP
 
 /// <summary>
 /// A thread pool wrapper for boost::asio::thread_pool.
-/// The passed token is ignored.
 /// </summary>
 class ThreadPoolBoost
 {
@@ -17,9 +16,8 @@ public:
    /// Posts a task to the thread pool
    /// </summary>
    /// <param name="task">A posted task</param>
-   /// <param name="token">A token for tasks grouping</param>
-   template <typename Task, typename Token>
-   void Post(Task&& task, Token&& /*token*/)
+   template <typename Task>
+   void Post(Task&& task)
    {
       boost::asio::post(m_threadPool, std::forward<Task>(task));
    }

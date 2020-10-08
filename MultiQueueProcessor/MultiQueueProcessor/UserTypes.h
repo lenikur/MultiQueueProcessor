@@ -41,7 +41,10 @@ struct MyHash
 /// </summary>
 struct MyVal
 {
-   MyVal() = default;
+   MyVal()
+   {
+      ++_copyAndCreateCallsCount;
+   }
 
    template <typename T>
    explicit MyVal(const T& s) : S(s)

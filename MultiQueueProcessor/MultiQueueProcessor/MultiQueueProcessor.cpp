@@ -13,6 +13,7 @@
 #include "ThreadPoolBoost.h"
 #include "MultiQueueProcessor.h"
 #include "UserTypes.h"
+#include "IConsumer.h"
 
 using namespace std::chrono;
 
@@ -42,15 +43,7 @@ public:
    std::atomic_uint32_t ExpectedCallsCount;
 };
 
-namespace
-{
-   /// <summary>
-   /// the value defines MQProcessor tuning parameter and is considered during samples launching (see main() implementation)
-   /// </summary>
-   constexpr MQP::ETuning multiQueueTuning = MQP::ETuning::size;
-}
-
-using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, multiQueueTuning, MyHash>;
+using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, MyHash>;
 using Consumer = TTestConsumer<MyKey, MyVal>;
 using ConsumerPtr = std::shared_ptr < TTestConsumer<MyKey, MyVal>>;
 
@@ -94,9 +87,10 @@ void sampleOneSubscriberManyKeys()
    const MyKey key2{ 2 };
 
    constexpr std::uint32_t valuesCount = 10;
-   auto consumer = std::make_shared<Consumer>(valuesCount * 2);
+   auto consumer = std::make_shared<Consumer>(valuesCount);
+   auto consumer2 = std::make_shared<Consumer>(valuesCount);
    processor.Subscribe(key1, consumer);
-   processor.Subscribe(key2, consumer);
+   processor.Subscribe(key2, consumer2);
 
    boost::asio::thread_pool pool;
 
@@ -117,7 +111,7 @@ void sampleOneSubscriberManyKeys()
 
    while (true)
    {
-      if (consumer->ExpectedCallsCount == 0)
+      if (consumer->ExpectedCallsCount == 0 && consumer2->ExpectedCallsCount == 0)
       {
          return;
       }
@@ -135,7 +129,7 @@ void demoValueCopiesCount(EDemo mode)
    MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
 
    constexpr std::uint32_t valuesCount = 10;
-   constexpr std::uint32_t consumersCount = 10;
+   constexpr std::uint32_t consumersCount = 1;
 
    const MyKey key{ 1 };
 
@@ -200,21 +194,18 @@ void demoValueCopiesCount(EDemo mode)
 int main()
 {
    std::cout << "******************* Sample *******************" << std::endl;
-   sample();
+   //sample();
 
    std::cout << "********** Sample one consumer many keys **********" << std::endl;
-   sampleOneSubscriberManyKeys();
+   //sampleOneSubscriberManyKeys();
 
-   if (multiQueueTuning == MQP::ETuning::size)
-   {
-      MyVal::_copyAndCreateCallsCount = 0; // reset
-      std::cout << "******************* Lvalue demo *******************" << std::endl;
-      demoValueCopiesCount(EDemo::lvalue);
+   MyVal::_copyAndCreateCallsCount = 0; // reset
+   std::cout << "******************* Lvalue demo *******************" << std::endl;
+   demoValueCopiesCount(EDemo::lvalue);
 
-      MyVal::_copyAndCreateCallsCount = 0; // reset
-      std::cout << "******************* Rvalue demo *******************" << std::endl;
-      demoValueCopiesCount(EDemo::rvalue);
-   }
+   MyVal::_copyAndCreateCallsCount = 0; // reset
+   std::cout << "******************* Rvalue demo *******************" << std::endl;
+   demoValueCopiesCount(EDemo::rvalue);
 
    return 0;
 }

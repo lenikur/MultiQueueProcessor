@@ -6,7 +6,6 @@
 #include <deque>
 
 #include "IConsumer.h"
-#include "IValueSource.h"
 
 namespace MQP
 {
@@ -16,25 +15,19 @@ namespace MQP
 /// Also, the class controls that only one task is processed in the thread pool for the consumer at a time.
 /// </summary>
 template<typename Key, typename Value, typename TPool, typename Hash>
-class ConsumerProcessor final : public IValueSourceConsumer<Key, Value>
-                              , public std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>
+class ConsumerProcessor : public std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>
 {
    enum class EState { free, processing };
 public:
-   ConsumerProcessor(IConsumerPtr<Key, Value> consumer, std::shared_ptr<TPool> threadPool) 
+   ConsumerProcessor(Key key, IConsumerPtr<Key, Value> consumer, std::shared_ptr<TPool> threadPool) 
       : m_consumer(std::move(consumer))
-      , m_token(reinterpret_cast<std::uintptr_t>(m_consumer.get()))
       , m_threadPool(std::move(threadPool))
+      , m_key(std::move(key))
    {
    }
 
    ~ConsumerProcessor()
    {
-      std::scoped_lock lock(m_valueSourceMutex);
-      for (auto& [key, valueSource] : m_valueSources)
-      {
-         valueSource->Stop();
-      }
    }
 
    ConsumerProcessor(const ConsumerProcessor&) = delete;
@@ -43,80 +36,49 @@ public:
    ConsumerProcessor& operator=(ConsumerProcessor&&) = delete;
 
    /// <summary>
-   /// Adds a value source to consumer processor
+   /// A new value available in the passed value source event handler
    /// </summary>
-   /// <param name="key">A key for which a processed consumer needs data.</param>
-   /// <param name="valueSource">A value source which provides data for the passed key.</param>
-   void AddValueSource(const Key& key, IValueSourcePtr<Key, Value> valueSource)
+   template <typename TValue>
+   void Enqueue(TValue&& value)
    {
-      std::scoped_lock lock(m_valueSourceMutex);
-
-      m_valueSources.try_emplace(key, std::move(valueSource));
-   }
-
-   /// <summary>
-   /// Removes consumer's subscription to a passed key
-   /// </summary>
-   void RemoveSubscription(const Key& key)
-   {
-      IValueSourcePtr<Key, Value> valueSource;
-
       {
-         std::scoped_lock lock(m_valueSourceMutex);
-
-         auto it = m_valueSources.find(key);
-         if (it == std::end(m_valueSources))
+         std::scoped_lock lock(m_mutex);
+         if (m_state == EState::processing)
          {
+            m_values.emplace_back(std::move(value));
             return;
          }
 
-         valueSource = std::move(it->second);
-         m_valueSources.erase(it);
+         assert(m_state == EState::free);
+         m_state = EState::processing;
       }
 
-      valueSource->Stop();
-   }
-
-   bool IsSubscribedToAny() const
-   {
-      std::scoped_lock lock(m_valueSourceMutex);
-
-      return !m_valueSources.empty();
-   }
-
-   const IConsumerPtr<Key, Value>& GetConsumer() const
-   {
-      return m_consumer;
+      m_threadPool->Post(createTask(std::forward<TValue>(value)));
    }
 
 private:
-
+   
    using std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>::weak_from_this;
+
+   void makeCall(Value&& value)
+   {
+      m_consumer->Consume(m_key, value);
+
+      onValueProcessed();
+   }
 
    /// <summary>
    /// Creates a consumer notification task for passing it to the thread pool.
    /// </summary>
-   std::packaged_task<void()> createTask(IValueSourceWeakPtr<Key, Value> valueSource)
+   template <typename TValue>
+   std::packaged_task<void()> createTask(TValue&& value)
    {
-      return std::packaged_task<void()>([processor = weak_from_this(), valueSource = valueSource]()
+      return std::packaged_task<void()>([processor = weak_from_this(), value = std::forward<TValue>(value)]() mutable
       {
-         auto spProcessor = processor.lock();
-         if (!spProcessor)
+         if (auto spProcessor = processor.lock())
          {
-            return;
+            spProcessor->makeCall(std::move(value));
          }
-
-         if (auto spValueSource = valueSource.lock())
-         {
-            if (!spValueSource->IsStopped() && spValueSource->HasValue())
-            {
-               const auto& [key, value] = spValueSource->GetValue();
-               spProcessor->GetConsumer()->Consume(key, value);
-               spValueSource->MoveNext();
-            }
-         }
-
-         spProcessor->onValueProcessed();
       });
    }
 
@@ -125,70 +87,30 @@ private:
    /// </summary>
    void onValueProcessed()
    {
-      std::packaged_task<void()> nextTask;
-
+      if (m_outValues.empty())
       {
          std::scoped_lock lock(m_mutex);
-         assert(m_state == EState::processing);
 
-         while (!m_valueSourceProcessingOrder.empty())
+         if (m_values.empty())
          {
-            auto nextValueSource = std::move(m_valueSourceProcessingOrder.front());
-            m_valueSourceProcessingOrder.pop_front();
-
-            auto valueSource = nextValueSource.lock();
-            if (!valueSource || valueSource->IsStopped())
-            {
-               continue; // skip all stopped value sources
-            }
-
-            nextTask = createTask(std::move(nextValueSource));
-            break;
-         }
-
-         if (!nextTask.valid() && m_valueSourceProcessingOrder.empty())
-         {
+            assert(m_state == EState::processing);
             m_state = EState::free;
             return;
          }
+         m_outValues.swap(m_values);
       }
 
-      m_threadPool->Post(std::move(nextTask), m_token);
-   }
-
-   /// <summary>
-   /// A new value available in the passed value source event handler
-   /// </summary>
-   void OnNewValueAvailable(IValueSourcePtr<Key, Value> valueSource) override
-   {
-      std::packaged_task<void()> task;
-
-      {
-         std::scoped_lock lock(m_mutex);
-         if (m_state == EState::processing)
-         {
-            m_valueSourceProcessingOrder.emplace_back(std::move(valueSource));
-            return;
-         }
-
-         assert(m_state == EState::free);
-         m_state = EState::processing;
-
-         task = createTask(std::move(valueSource));
-      }
-
-      m_threadPool->Post(std::move(task), m_token);
+      m_threadPool->Post(createTask(std::move(m_outValues.front())));
+      m_outValues.pop_front();
    }
 
 private:
    const IConsumerPtr<Key, Value> m_consumer;
-   // a token is requiered in case a thread pool shall notify the consumer strictly from the same thread (STA simulation)
-   const std::uintptr_t m_token; 
-   std::mutex m_mutex; // guards m_state and m_valueSourceProcessingOrder
+   std::mutex m_mutex; // guards m_state and m_values
    EState m_state = EState::free;
-   std::deque<IValueSourceWeakPtr<Key, Value>> m_valueSourceProcessingOrder; // keeps the calls order close to original
-   mutable std::mutex m_valueSourceMutex; // guards m_valueSources
-   std::unordered_map<Key, IValueSourcePtr<Key, Value>, Hash> m_valueSources;
+   const Key m_key;
+   std::deque<Value> m_values;
+   std::deque<Value> m_outValues;
    const std::shared_ptr<TPool> m_threadPool;
 };
 

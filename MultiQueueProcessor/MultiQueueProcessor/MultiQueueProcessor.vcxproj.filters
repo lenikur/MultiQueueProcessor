@@ -30,16 +30,7 @@
     <ClInclude Include="ThreadPoolBoost.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DataManager.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="UserTypes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="IValueSource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DataManagerFavorSpeed.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
