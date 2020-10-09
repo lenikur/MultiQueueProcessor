@@ -43,6 +43,39 @@ public:
    std::atomic_uint32_t ExpectedCallsCount;
 };
 
+/// <summary>
+/// The function shows how to use MQProcessor 
+/// </summary>
+void sample3()
+{
+   using MQProcessor = MQP::MultiQueueProcessor<int, std::string, MQP::ThreadPoolBoost>;
+   using Consumer = TTestConsumer<int, std::string>;
+   using ConsumerPtr = std::shared_ptr<TTestConsumer<int, std::string>>;
+
+   MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
+
+   const int key{ 1 };
+
+   constexpr std::uint32_t valuesCount = 10;
+   auto consumer = std::make_shared<Consumer>(valuesCount);
+   processor.Subscribe(key, consumer);
+
+   for (int i = 0; i < valuesCount; ++i)
+   {
+      processor.Enqueue(key, std::to_string(i));
+   }
+
+   while (true)
+   {
+      if (consumer->ExpectedCallsCount == 0)
+      {
+         return;
+      }
+
+      std::this_thread::yield();
+   }
+}
+
 using MQProcessor = MQP::MultiQueueProcessor<MyKey, MyVal, MQP::ThreadPoolBoost, MyHash>;
 using Consumer = TTestConsumer<MyKey, MyVal>;
 using ConsumerPtr = std::shared_ptr < TTestConsumer<MyKey, MyVal>>;
@@ -192,6 +225,7 @@ void demoValueCopiesCount(EDemo mode)
 
 int main()
 {
+   sample3();
    std::cout << "******************* Sample *******************" << std::endl;
    sample();
 

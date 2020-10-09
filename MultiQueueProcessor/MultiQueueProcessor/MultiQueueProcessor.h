@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <shared_mutex>
 #include <memory>
+#include <type_traits>
 
 #include "ConsumerProcessor.h"
 #include "IConsumer.h"
@@ -25,7 +26,9 @@ public:
    /// <param name="threadPool">A thread pool that is used for the consumers notification tasks execution.</param>
    MultiQueueProcessor(std::shared_ptr<TPool> threadPool)
       : m_threadPool(std::move(threadPool))
-   {}
+   {
+      static_assert(std::is_move_constructible_v<Value>, "Only movable type are supported");
+   }
 
    MultiQueueProcessor(const MultiQueueProcessor&) = delete;
    MultiQueueProcessor& operator=(const MultiQueueProcessor&) = delete;
