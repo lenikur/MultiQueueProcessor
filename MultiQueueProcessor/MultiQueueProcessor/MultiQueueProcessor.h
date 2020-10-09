@@ -24,10 +24,10 @@ public:
    /// Ctor
    /// </summary>
    /// <param name="threadPool">A thread pool that is used for the consumers notification tasks execution.</param>
-   MultiQueueProcessor(std::shared_ptr<TPool> threadPool)
+   explicit MultiQueueProcessor(std::shared_ptr<TPool> threadPool)
       : m_threadPool(std::move(threadPool))
    {
-      static_assert(std::is_move_constructible_v<Value>, "Only movable type are supported");
+      static_assert(std::is_move_constructible_v<Value>, "Only movable types are supported");
    }
 
    MultiQueueProcessor(const MultiQueueProcessor&) = delete;
