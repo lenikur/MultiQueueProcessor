@@ -26,10 +26,6 @@ public:
    {
    }
 
-   ~ConsumerProcessor()
-   {
-   }
-
    ConsumerProcessor(const ConsumerProcessor&) = delete;
    ConsumerProcessor& operator=(const ConsumerProcessor&) = delete;
    ConsumerProcessor(ConsumerProcessor&&) = delete;
@@ -45,7 +41,7 @@ public:
          std::scoped_lock lock(m_mutex);
          if (m_state == EState::processing)
          {
-            m_values.emplace_back(std::move(value));
+            m_values.emplace_back(std::forward<TValue>(value));
             return;
          }
 
@@ -60,13 +56,6 @@ private:
    
    using std::enable_shared_from_this<ConsumerProcessor<Key, Value, TPool, Hash>>::weak_from_this;
 
-   void makeCall(Value&& value)
-   {
-      m_consumer->Consume(m_key, value);
-
-      onValueProcessed();
-   }
-
    /// <summary>
    /// Creates a consumer notification task for passing it to the thread pool.
    /// </summary>
@@ -77,9 +66,19 @@ private:
       {
          if (auto spProcessor = processor.lock())
          {
-            spProcessor->makeCall(std::move(value));
+            spProcessor->notifyConsumer(std::move(value));
          }
       });
+   }
+
+   /// <summary>
+   /// Notifies a consumer with a passed value.
+   /// </summary>
+   void notifyConsumer(Value&& value)
+   {
+      m_consumer->Consume(m_key, value);
+
+      onValueProcessed();
    }
 
    /// <summary>
@@ -100,8 +99,10 @@ private:
          m_outValues.swap(m_values);
       }
 
-      m_threadPool->Post(createTask(std::move(m_outValues.front())));
+      auto value = std::move(m_outValues.front());
       m_outValues.pop_front();
+
+      m_threadPool->Post(createTask(std::move(value)));
    }
 
 private:

@@ -16,6 +16,8 @@ namespace MQP
 template<typename Key, typename Value, typename TPool, typename Hash = std::hash<typename Key>>
 class MultiQueueProcessor
 {
+   using Processor = ConsumerProcessor<Key, Value, TPool, Hash>;
+   using ProcessorPtr = ConsumerProcessorPtr<Key, Value, TPool, Hash>;
 public:
    /// <summary>
    /// Ctor
@@ -32,13 +34,7 @@ public:
 
    /// <summary>
    /// Subscribes a consumer to value notifications by the key.
-   /// 
-   /// It is guaranteed that a consumer will be notified (via IConsumer::Consume) sequentially (not simultaneously) 
-   /// about all enqueued values for a key for which the consumer is subscribed to. Whether such notifications happen 
-   /// in the same thread or the calls can occur from different threads (but anyway sequetially) is controlled by 
-   /// the thread pool implementation, passed to MultiQueueProcessor.
-   /// It is not guaranteed that the consumer which is subscribed to different keys will be notified sequentially
-   /// about all enqueued values for that keys. The current implementation provides only "intra key" sequential notifications.
+   /// Only one consumer can be subscribed to one key. All additional subscriptions are ignored.
    /// </summary>
    void Subscribe(const Key& key, IConsumerPtr<Key, Value> consumer)
    {
@@ -49,7 +45,7 @@ public:
 
       std::scoped_lock lock(m_mutex);
 
-      m_consumerProcessors.try_emplace(key, std::make_shared<ConsumerProcessor<Key, Value, TPool, Hash>>(key, std::move(consumer), m_threadPool));
+      m_consumerProcessors.try_emplace(key, std::make_shared<Processor>(key, std::move(consumer), m_threadPool));
    }
 
    /// <summary>
@@ -70,7 +66,7 @@ public:
    template <typename TValue>
    void Enqueue(const Key& key, TValue&& value)
    {
-      ConsumerProcessorPtr<Key, Value, TPool, Hash> processor;
+      ProcessorPtr processor;
       {
          std::shared_lock sharedLock(m_mutex);
 
@@ -88,7 +84,7 @@ public:
 
 private:
    std::shared_mutex m_mutex; // guards m_consumerProcessors
-   std::unordered_map<Key, ConsumerProcessorPtr<Key, Value, TPool, Hash>, Hash> m_consumerProcessors;
-   const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers calls" tasks execution
+   std::unordered_map<Key, ProcessorPtr, Hash> m_consumerProcessors;
+   const std::shared_ptr<TPool> m_threadPool; // a thread pool that is used for "consumers notification" tasks execution
 };
 }

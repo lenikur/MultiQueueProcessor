@@ -77,9 +77,9 @@ void sample()
 }
 
 /// <summary>
-/// The function shows how to use MQProcessor. One consumer subscribed to 2 keys.
+/// The function shows how to use MQProcessor. Enqueuing from different threads.
 /// </summary>
-void sampleOneSubscriberManyKeys()
+void sampleEnqueuingFromDifferentThreads()
 {
    MQProcessor processor{ std::make_unique<MQP::ThreadPoolBoost>() };
 
@@ -190,14 +190,13 @@ void demoValueCopiesCount(EDemo mode)
    }
 }
 
-
 int main()
 {
    std::cout << "******************* Sample *******************" << std::endl;
-   //sample();
+   sample();
 
-   std::cout << "********** Sample one consumer many keys **********" << std::endl;
-   //sampleOneSubscriberManyKeys();
+   std::cout << "******************* Enqueuing from different threads *******************" << std::endl;
+   sampleEnqueuingFromDifferentThreads();
 
    MyVal::_copyAndCreateCallsCount = 0; // reset
    std::cout << "******************* Lvalue demo *******************" << std::endl;
